@@ -42,8 +42,32 @@
         <div id="measurements"></div>
       </section>
 
-      <section>
+      <section id="gps-tools">
         <h3>GPS Tools</h3>
+        <label>Capture Mode
+          <select id="capture-mode">
+            <option value="sketch">Sketch</option>
+            <option value="gps">GPS</option>
+          </select>
+        </label>
+        <label>Point capture
+          <select id="gps-point-mode">
+            <option value="manual">Manual</option>
+            <option value="stream">Stream</option>
+          </select>
+        </label>
+        <label>Line capture
+          <select id="gps-line-mode">
+            <option value="manual">Manual</option>
+            <option value="stream">Stream</option>
+          </select>
+        </label>
+        <label>Polygon capture
+          <select id="gps-polygon-mode">
+            <option value="manual">Manual</option>
+            <option value="stream">Stream</option>
+          </select>
+        </label>
         <div class="grid-2">
           <button id="gps-enable" type="button">Enable GPS</button>
           <button id="gps-add-point" type="button">Add GPS Point</button>
