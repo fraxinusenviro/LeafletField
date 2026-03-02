@@ -94,10 +94,7 @@ const ToolsControl = L.Control.extend({
     button.textContent = '🛠';
     button.title = 'Toggle tools';
     L.DomEvent.disableClickPropagation(button);
-    L.DomEvent.on(button, 'click', () => {
-      const hidden = toolsPanel.classList.toggle('hidden');
-      drawControl._container.classList.toggle('hidden', hidden);
-    });
+    L.DomEvent.on(button, 'click', () => toolsPanel.classList.toggle('hidden'));
     return button;
   }
 });
@@ -113,7 +110,6 @@ const drawControl = new L.Control.Draw({
   edit: { featureGroup: drawnItems }
 });
 map.addControl(drawControl);
-drawControl._container.classList.add('hidden');
 
 function applyStyle(layer) {
   const type = getGeometryType(layer);
@@ -132,11 +128,7 @@ function applyStyle(layer) {
   }
 
   if (type === 'LineString') {
-    layer.setStyle({
-      color: styles.LineString.color,
-      weight: Number(styles.LineString.weight),
-      opacity: isVisible ? 1 : 0
-    });
+    layer.setStyle({ color: styles.LineString.color, weight: Number(styles.LineString.weight), opacity: isVisible ? 1 : 0 });
     return;
   }
 
@@ -147,6 +139,22 @@ function applyStyle(layer) {
     fillColor: styles.Polygon.fillColor,
     fillOpacity: isVisible ? Number(styles.Polygon.fillOpacity) : 0
   });
+}
+
+let selectedLayer = null;
+function showMeasurements(layer) {
+  const container = document.getElementById('measurements');
+  const feature = layer.toGeoJSON();
+  if (feature.geometry.type === 'LineString') {
+    const lengthMeters = turf.length(feature, { units: 'kilometers' }) * 1000;
+    container.textContent = `Length: ${lengthMeters.toFixed(2)} m`;
+  } else if (feature.geometry.type === 'Polygon') {
+    const area = turf.area(feature);
+    const perimeter = turf.length(turf.polygonToLine(feature), { units: 'kilometers' }) * 1000;
+    container.textContent = `Area: ${area.toFixed(2)} m² | Perimeter: ${perimeter.toFixed(2)} m`;
+  } else {
+    container.textContent = 'Point selected';
+  }
 }
 
 function selectFeature(layer) {
@@ -160,14 +168,6 @@ function selectFeature(layer) {
 
 function bindFeatureEvents(layer) {
   layer.on('click', () => selectFeature(layer));
-}
-
-function normalizeDrawLayer(layer, source = 'sketch') {
-  const feature = ensureFeatureProperties(layer.toGeoJSON(), source);
-  layer.feature = feature;
-  applyStyle(layer);
-  bindFeatureEvents(layer);
-  return layer;
 }
 
 function addFeatureToMap(feature) {
@@ -204,11 +204,11 @@ function loadFeatures() {
 
 map.on(L.Draw.Event.CREATED, (e) => {
   let layer = e.layer;
-  if (layer instanceof L.Marker && !(layer instanceof L.CircleMarker)) {
-    layer = L.circleMarker(layer.getLatLng());
-  }
-  normalizeDrawLayer(layer, 'sketch');
+  if (layer instanceof L.Marker && !(layer instanceof L.CircleMarker)) layer = L.circleMarker(layer.getLatLng());
+  layer.feature = ensureFeatureProperties(layer.toGeoJSON(), 'sketch');
   touchFeature(layer.feature);
+  applyStyle(layer);
+  bindFeatureEvents(layer);
   drawnItems.addLayer(layer);
   saveFeatures();
 });
@@ -227,22 +227,6 @@ map.on(L.Draw.Event.DELETED, () => {
   document.getElementById('measurements').textContent = '';
   saveFeatures();
 });
-
-let selectedLayer = null;
-function showMeasurements(layer) {
-  const container = document.getElementById('measurements');
-  const feature = layer.toGeoJSON();
-  if (feature.geometry.type === 'LineString') {
-    const lengthMeters = turf.length(feature, { units: 'kilometers' }) * 1000;
-    container.textContent = `Length: ${lengthMeters.toFixed(2)} m`;
-  } else if (feature.geometry.type === 'Polygon') {
-    const area = turf.area(feature);
-    const perimeter = turf.length(turf.polygonToLine(feature), { units: 'kilometers' }) * 1000;
-    container.textContent = `Area: ${area.toFixed(2)} m² | Perimeter: ${perimeter.toFixed(2)} m`;
-  } else {
-    container.textContent = 'Point selected';
-  }
-}
 
 document.getElementById('save-attrs').addEventListener('click', () => {
   if (!selectedLayer?.feature) return;
@@ -269,14 +253,10 @@ function syncVisibilityAndStyle() {
 
 function wireStyleInputs() {
   const ids = {
-    pointColor: 'style-point-color',
-    pointSize: 'style-point-size',
-    lineColor: 'style-line-color',
-    lineWidth: 'style-line-width',
-    polygonColor: 'style-polygon-color',
-    polygonWidth: 'style-polygon-width',
-    polygonFill: 'style-polygon-fill',
-    polygonOpacity: 'style-polygon-opacity'
+    pointColor: 'style-point-color', pointSize: 'style-point-size',
+    lineColor: 'style-line-color', lineWidth: 'style-line-width',
+    polygonColor: 'style-polygon-color', polygonWidth: 'style-polygon-width',
+    polygonFill: 'style-polygon-fill', polygonOpacity: 'style-polygon-opacity'
   };
 
   document.getElementById(ids.pointColor).value = styles.Point.color;
@@ -301,25 +281,15 @@ function wireStyleInputs() {
     };
     syncVisibilityAndStyle();
   };
-
   Object.values(ids).forEach((id) => document.getElementById(id).addEventListener('input', updateStyles));
 
   document.getElementById('vis-point').checked = visibility.Point;
   document.getElementById('vis-line').checked = visibility.LineString;
   document.getElementById('vis-polygon').checked = visibility.Polygon;
 
-  document.getElementById('vis-point').addEventListener('change', (e) => {
-    visibility.Point = e.target.checked;
-    syncVisibilityAndStyle();
-  });
-  document.getElementById('vis-line').addEventListener('change', (e) => {
-    visibility.LineString = e.target.checked;
-    syncVisibilityAndStyle();
-  });
-  document.getElementById('vis-polygon').addEventListener('change', (e) => {
-    visibility.Polygon = e.target.checked;
-    syncVisibilityAndStyle();
-  });
+  document.getElementById('vis-point').addEventListener('change', (e) => { visibility.Point = e.target.checked; syncVisibilityAndStyle(); });
+  document.getElementById('vis-line').addEventListener('change', (e) => { visibility.LineString = e.target.checked; syncVisibilityAndStyle(); });
+  document.getElementById('vis-polygon').addEventListener('change', (e) => { visibility.Polygon = e.target.checked; syncVisibilityAndStyle(); });
 }
 
 document.getElementById('download-geojson').addEventListener('click', () => {
@@ -335,30 +305,15 @@ document.getElementById('download-geojson').addEventListener('click', () => {
 document.getElementById('import-file').addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
-
   let json;
-  try {
-    json = JSON.parse(await file.text());
-  } catch {
-    alert('Invalid JSON file.');
-    e.target.value = '';
-    return;
-  }
+  try { json = JSON.parse(await file.text()); } catch { alert('Invalid JSON file.'); e.target.value = ''; return; }
+  if (!isFeatureCollection(json)) { alert('Invalid GeoJSON: expected FeatureCollection.'); e.target.value = ''; return; }
 
-  if (!isFeatureCollection(json)) {
-    alert('Invalid GeoJSON: expected FeatureCollection.');
-    e.target.value = '';
-    return;
-  }
-
-  const mode = document.getElementById('import-mode').value;
-  if (mode === 'replace') drawnItems.clearLayers();
-
+  if (document.getElementById('import-mode').value === 'replace') drawnItems.clearLayers();
   json.features.forEach((feature) => {
     if (feature?.type !== 'Feature' || !feature.geometry?.type) return;
     addFeatureToMap(feature);
   });
-
   saveFeatures();
   e.target.value = '';
 });
@@ -366,7 +321,7 @@ document.getElementById('import-file').addEventListener('change', async (e) => {
 const gps = {
   watchId: null,
   enabled: false,
-  stream: false,
+  pointStream: false,
   lineRec: false,
   polygonRec: false,
   linePoints: [],
@@ -376,37 +331,39 @@ const gps = {
   lastAccepted: null,
   lastAcceptedTs: 0,
   lastFix: null,
-  acceptedCount: 0
+  acceptedCount: 0,
+  captureMode: 'sketch'
 };
-
-function currentMode() {
-  if (gps.polygonRec) return 'GPS Polygon';
-  if (gps.lineRec) return 'GPS Line';
-  if (gps.stream) return 'GPS Stream';
-  return 'Sketch';
-}
-
-function updateStatus() {
-  const accuracy = gps.lastFix ? `${gps.lastFix.accuracy.toFixed(1)} m` : 'n/a';
-  document.getElementById('status-bar').textContent = `Mode: ${currentMode()} | GPS accuracy: ${accuracy}`;
-  document.getElementById('gps-status').textContent = gps.enabled
-    ? `GPS active | last accuracy ${accuracy} | accepted points ${gps.acceptedCount}`
-    : 'GPS inactive';
-}
 
 function gpsConfig() {
   return {
     minDistance: Number(document.getElementById('gps-min-distance').value) || 3,
     minIntervalMs: (Number(document.getElementById('gps-min-interval').value) || 1) * 1000,
-    maxAccuracy: Number(document.getElementById('gps-max-accuracy').value) || 25
+    maxAccuracy: Number(document.getElementById('gps-max-accuracy').value) || 25,
+    pointMode: document.getElementById('gps-point-mode').value,
+    lineMode: document.getElementById('gps-line-mode').value,
+    polygonMode: document.getElementById('gps-polygon-mode').value
   };
 }
 
+function currentModeLabel() {
+  if (gps.captureMode === 'sketch') return 'Sketch';
+  if (gps.polygonRec) return `GPS Polygon (${gpsConfig().polygonMode})`;
+  if (gps.lineRec) return `GPS Line (${gpsConfig().lineMode})`;
+  if (gps.pointStream) return 'GPS Point (stream)';
+  return 'GPS';
+}
+
+function updateStatus() {
+  const accuracy = gps.lastFix ? `${gps.lastFix.accuracy.toFixed(1)} m` : 'n/a';
+  document.getElementById('status-bar').textContent = `Mode: ${currentModeLabel()} | GPS accuracy: ${accuracy}`;
+  document.getElementById('gps-status').textContent = gps.enabled
+    ? `GPS active | last accuracy ${accuracy} | accepted points ${gps.acceptedCount}`
+    : 'GPS inactive';
+}
+
 function startGps() {
-  if (!navigator.geolocation) {
-    alert('Geolocation is not supported by this browser.');
-    return false;
-  }
+  if (!navigator.geolocation) { alert('Geolocation is not supported by this browser.'); return false; }
   if (gps.enabled) return true;
 
   gps.watchId = navigator.geolocation.watchPosition(onGpsFix, onGpsError, {
@@ -414,7 +371,6 @@ function startGps() {
     maximumAge: 0,
     timeout: 15000
   });
-
   gps.enabled = true;
   updateStatus();
   return true;
@@ -424,17 +380,62 @@ function stopGps() {
   if (gps.watchId !== null) navigator.geolocation.clearWatch(gps.watchId);
   gps.watchId = null;
   gps.enabled = false;
-  gps.stream = false;
+  gps.pointStream = false;
   gps.lineRec = false;
   gps.polygonRec = false;
   gps.linePoints = [];
   gps.polygonPoints = [];
-
   document.getElementById('gps-stream').textContent = 'Start GPS Stream';
   document.getElementById('gps-line').textContent = 'Start Line Recording';
   document.getElementById('gps-polygon').textContent = 'Start Polygon Recording';
   document.getElementById('gps-enable').textContent = 'Enable GPS';
   updateStatus();
+}
+
+function addGpsFeature(geometry) {
+  const layer = addFeatureToMap({ type: 'Feature', properties: { source: 'gps' }, geometry });
+  if (layer?.feature) touchFeature(layer.feature);
+  saveFeatures();
+}
+
+function addCurrentFixPoint() {
+  if (!gps.lastFix) return;
+  addGpsFeature({ type: 'Point', coordinates: [gps.lastFix.latlng.lng, gps.lastFix.latlng.lat] });
+}
+
+function addLineVertexManual() {
+  if (!gps.lastFix) return;
+  gps.linePoints.push([gps.lastFix.latlng.lng, gps.lastFix.latlng.lat]);
+}
+
+function addPolygonVertexManual() {
+  if (!gps.lastFix) return;
+  gps.polygonPoints.push([gps.lastFix.latlng.lng, gps.lastFix.latlng.lat]);
+}
+
+function finalizeLine() {
+  if (gps.linePoints.length < 2) {
+    alert('Need at least 2 accepted points to save a line.');
+    gps.linePoints = [];
+    return;
+  }
+  addGpsFeature({ type: 'LineString', coordinates: gps.linePoints });
+  gps.linePoints = [];
+}
+
+function finalizePolygon() {
+  const uniqueVertices = new Set(gps.polygonPoints.map((c) => c.join(',')));
+  if (uniqueVertices.size < 3) {
+    alert('Invalid polygon: at least 3 unique accepted vertices are required. Recording discarded.');
+    gps.polygonPoints = [];
+    return;
+  }
+  const ring = [...gps.polygonPoints];
+  const first = ring[0];
+  const last = ring[ring.length - 1];
+  if (!last || first[0] !== last[0] || first[1] !== last[1]) ring.push(first);
+  addGpsFeature({ type: 'Polygon', coordinates: [ring] });
+  gps.polygonPoints = [];
 }
 
 function onGpsFix(position) {
@@ -443,42 +444,28 @@ function onGpsFix(position) {
   gps.lastFix = { latlng, accuracy };
 
   if (!gps.liveMarker) {
-    gps.liveMarker = L.circleMarker(latlng, {
-      radius: 6,
-      color: '#2196f3',
-      fillColor: '#2196f3',
-      fillOpacity: 0.8
-    }).addTo(map);
-    gps.accuracyCircle = L.circle(latlng, {
-      radius: accuracy,
-      color: '#2196f3',
-      fillOpacity: 0.1
-    }).addTo(map);
+    gps.liveMarker = L.circleMarker(latlng, { radius: 6, color: '#2196f3', fillColor: '#2196f3', fillOpacity: 0.8 }).addTo(map);
+    gps.accuracyCircle = L.circle(latlng, { radius: accuracy, color: '#2196f3', fillOpacity: 0.1 }).addTo(map);
   } else {
     gps.liveMarker.setLatLng(latlng);
     gps.accuracyCircle.setLatLng(latlng).setRadius(accuracy);
   }
 
-  const cfg = gpsConfig();
-  if (accuracy > cfg.maxAccuracy) {
-    updateStatus();
-    return;
-  }
+  if (gps.captureMode !== 'gps') { updateStatus(); return; }
 
+  const cfg = gpsConfig();
+  if (accuracy > cfg.maxAccuracy) { updateStatus(); return; }
   const tooSoon = position.timestamp - gps.lastAcceptedTs < cfg.minIntervalMs;
   const tooClose = gps.lastAccepted ? map.distance(gps.lastAccepted, latlng) < cfg.minDistance : false;
-  if (tooSoon || tooClose) {
-    updateStatus();
-    return;
-  }
+  if (tooSoon || tooClose) { updateStatus(); return; }
 
   gps.lastAccepted = latlng;
   gps.lastAcceptedTs = position.timestamp;
   gps.acceptedCount += 1;
 
-  if (gps.stream) addGpsPoint(latlng);
-  if (gps.lineRec) gps.linePoints.push([latlng.lng, latlng.lat]);
-  if (gps.polygonRec) gps.polygonPoints.push([latlng.lng, latlng.lat]);
+  if (gps.pointStream && cfg.pointMode === 'stream') addGpsFeature({ type: 'Point', coordinates: [latlng.lng, latlng.lat] });
+  if (gps.lineRec && cfg.lineMode === 'stream') gps.linePoints.push([latlng.lng, latlng.lat]);
+  if (gps.polygonRec && cfg.polygonMode === 'stream') gps.polygonPoints.push([latlng.lng, latlng.lat]);
 
   updateStatus();
 }
@@ -487,131 +474,129 @@ function onGpsError(error) {
   document.getElementById('gps-status').textContent = `GPS error: ${error.message}`;
 }
 
-function addGpsPoint(latlng) {
-  const feature = {
-    type: 'Feature',
-    properties: { source: 'gps' },
-    geometry: { type: 'Point', coordinates: [latlng.lng, latlng.lat] }
-  };
-  const layer = addFeatureToMap(feature);
-  if (layer?.feature) touchFeature(layer.feature);
-  saveFeatures();
+function applyCaptureModeUI() {
+  const isGps = gps.captureMode === 'gps';
+  document.querySelectorAll('#gps-tools button, #gps-tools input, #gps-tools select');
+  document.getElementById('gps-enable').disabled = !isGps;
+  document.getElementById('gps-add-point').disabled = !isGps;
+  document.getElementById('gps-stream').disabled = !isGps;
+  document.getElementById('gps-line').disabled = !isGps;
+  document.getElementById('gps-polygon').disabled = !isGps;
+  document.getElementById('gps-min-distance').disabled = !isGps;
+  document.getElementById('gps-min-interval').disabled = !isGps;
+  document.getElementById('gps-max-accuracy').disabled = !isGps;
+  document.getElementById('gps-point-mode').disabled = !isGps;
+  document.getElementById('gps-line-mode').disabled = !isGps;
+  document.getElementById('gps-polygon-mode').disabled = !isGps;
 }
 
-function stopLineRecording() {
-  if (gps.linePoints.length < 2) {
-    alert('Need at least 2 accepted points to save a line.');
-    gps.linePoints = [];
-    return;
+document.getElementById('capture-mode').addEventListener('change', (e) => {
+  gps.captureMode = e.target.value;
+  if (gps.captureMode !== 'gps') {
+    gps.pointStream = false;
+    gps.lineRec = false;
+    gps.polygonRec = false;
+    document.getElementById('gps-stream').textContent = 'Start GPS Stream';
+    document.getElementById('gps-line').textContent = 'Start Line Recording';
+    document.getElementById('gps-polygon').textContent = 'Start Polygon Recording';
   }
-  const feature = {
-    type: 'Feature',
-    properties: { source: 'gps' },
-    geometry: { type: 'LineString', coordinates: gps.linePoints }
-  };
-  const layer = addFeatureToMap(feature);
-  if (layer?.feature) touchFeature(layer.feature);
-  gps.linePoints = [];
-  saveFeatures();
-}
-
-function stopPolygonRecording() {
-  const uniqueVertices = new Set(gps.polygonPoints.map((coords) => coords.join(',')));
-  if (uniqueVertices.size < 3) {
-    alert('Invalid polygon: at least 3 unique accepted vertices are required. Recording discarded.');
-    gps.polygonPoints = [];
-    return;
-  }
-
-  const ring = [...gps.polygonPoints];
-  const first = ring[0];
-  const last = ring[ring.length - 1];
-  if (!last || first[0] !== last[0] || first[1] !== last[1]) ring.push(first);
-
-  const feature = {
-    type: 'Feature',
-    properties: { source: 'gps' },
-    geometry: { type: 'Polygon', coordinates: [ring] }
-  };
-  const layer = addFeatureToMap(feature);
-  if (layer?.feature) touchFeature(layer.feature);
-  gps.polygonPoints = [];
-  saveFeatures();
-}
+  applyCaptureModeUI();
+  updateStatus();
+});
 
 document.getElementById('gps-enable').addEventListener('click', () => {
-  if (gps.enabled) {
-    stopGps();
-    return;
-  }
+  if (gps.enabled) { stopGps(); return; }
   if (!startGps()) return;
   document.getElementById('gps-enable').textContent = 'Disable GPS';
 });
 
 document.getElementById('gps-add-point').addEventListener('click', () => {
+  if (gps.captureMode !== 'gps') return;
   if (!startGps()) return;
   document.getElementById('gps-enable').textContent = 'Disable GPS';
-  if (gps.lastFix) addGpsPoint(gps.lastFix.latlng);
+  const cfg = gpsConfig();
+
+  if (gps.lineRec && cfg.lineMode === 'manual') {
+    addLineVertexManual();
+    updateStatus();
+    return;
+  }
+  if (gps.polygonRec && cfg.polygonMode === 'manual') {
+    addPolygonVertexManual();
+    updateStatus();
+    return;
+  }
+
+  addCurrentFixPoint();
 });
 
 document.getElementById('gps-stream').addEventListener('click', () => {
+  if (gps.captureMode !== 'gps') return;
   if (!startGps()) return;
   document.getElementById('gps-enable').textContent = 'Disable GPS';
 
-  gps.stream = !gps.stream;
-  if (gps.stream) {
-    gps.lineRec = false;
-    gps.polygonRec = false;
+  if (gpsConfig().pointMode !== 'stream') {
+    alert('Set Point capture mode to Stream to use GPS Point streaming.');
+    return;
   }
 
-  document.getElementById('gps-stream').textContent = gps.stream ? 'Stop GPS Stream' : 'Start GPS Stream';
+  gps.pointStream = !gps.pointStream;
+  if (gps.pointStream) { gps.lineRec = false; gps.polygonRec = false; }
+  document.getElementById('gps-stream').textContent = gps.pointStream ? 'Stop GPS Stream' : 'Start GPS Stream';
   document.getElementById('gps-line').textContent = 'Start Line Recording';
   document.getElementById('gps-polygon').textContent = 'Start Polygon Recording';
   updateStatus();
 });
 
 document.getElementById('gps-line').addEventListener('click', () => {
+  if (gps.captureMode !== 'gps') return;
   if (!startGps()) return;
   document.getElementById('gps-enable').textContent = 'Disable GPS';
 
-  if (gps.lineRec) {
-    gps.lineRec = false;
-    stopLineRecording();
-  } else {
-    gps.stream = false;
+  const mode = gpsConfig().lineMode;
+  if (!gps.lineRec) {
+    gps.pointStream = false;
     gps.polygonRec = false;
     gps.lineRec = true;
     gps.linePoints = [];
+    document.getElementById('gps-line').textContent = mode === 'manual' ? 'Add line vertices with Add GPS Point; click to Stop Line' : 'Stop Line Recording';
+  } else {
+    gps.lineRec = false;
+    finalizeLine();
+    document.getElementById('gps-line').textContent = 'Start Line Recording';
   }
 
   document.getElementById('gps-stream').textContent = 'Start GPS Stream';
-  document.getElementById('gps-line').textContent = gps.lineRec ? 'Stop Line Recording' : 'Start Line Recording';
   document.getElementById('gps-polygon').textContent = 'Start Polygon Recording';
   updateStatus();
 });
 
 document.getElementById('gps-polygon').addEventListener('click', () => {
+  if (gps.captureMode !== 'gps') return;
   if (!startGps()) return;
   document.getElementById('gps-enable').textContent = 'Disable GPS';
 
-  if (gps.polygonRec) {
-    gps.polygonRec = false;
-    stopPolygonRecording();
-  } else {
-    gps.stream = false;
+  const mode = gpsConfig().polygonMode;
+  if (!gps.polygonRec) {
+    gps.pointStream = false;
     gps.lineRec = false;
     gps.polygonRec = true;
     gps.polygonPoints = [];
+    document.getElementById('gps-polygon').textContent = mode === 'manual' ? 'Add polygon vertices with Add GPS Point; click to Stop Polygon' : 'Stop Polygon Recording';
+  } else {
+    gps.polygonRec = false;
+    finalizePolygon();
+    document.getElementById('gps-polygon').textContent = 'Start Polygon Recording';
   }
 
   document.getElementById('gps-stream').textContent = 'Start GPS Stream';
   document.getElementById('gps-line').textContent = 'Start Line Recording';
-  document.getElementById('gps-polygon').textContent = gps.polygonRec ? 'Stop Polygon Recording' : 'Start Polygon Recording';
   updateStatus();
 });
 
 wireStyleInputs();
 loadFeatures();
+applyCaptureModeUI();
 updateStatus();
 
 map.getContainer().addEventListener('touchmove', (e) => {
