@@ -20,61 +20,36 @@
     <div id="https-warning" class="https-warning hidden">
       Geolocation may require HTTPS (or localhost) to work reliably.
     </div>
-    <div id="map"></div>
+    <header class="app-header">
+      <img
+        class="app-logo"
+        src="https://static.wixstatic.com/media/7e7d52_71c1430e410040a5936a82003b184f41~mv2.jpg/v1/fill/w_744,h_186,al_c,q_80,usm_0.66_1.00_0.01,enc_avif,quality_auto/LOGO%20TEXT%20c2%20white%20green.jpg"
+        alt="Logo"
+      />
+    </header>
+    <div id="map">
+      <div id="map-crosshair" class="map-crosshair hidden" aria-hidden="true"></div>
+    </div>
 
     <aside id="tools-panel" class="tools-panel hidden">
-      <section>
-        <h3>Basemap</h3>
-        <p>Use the top-right basemap control to switch layers.</p>
-      </section>
-
+      <button id="tools-close" class="tools-close-btn" type="button" aria-label="Close tools menu" title="Close">
+        X
+      </button>
       <section>
         <h3>Sketch</h3>
         <button id="clear-features" type="button">Clear all features</button>
       </section>
 
       <section>
-        <h3>Feature Attributes</h3>
-        <label>Name <input id="attr-name" type="text" /></label>
-        <label>Type <input id="attr-type" type="text" /></label>
-        <label>Notes <textarea id="attr-notes" rows="3"></textarea></label>
-        <button id="save-attrs" type="button">Save selected feature</button>
-        <div id="measurements"></div>
+        <h3>Survey Metadata</h3>
+        <label>META_Surveyor <input id="meta-surveyor" type="text" /></label>
+        <label>META_Project <input id="meta-project" type="text" /></label>
+        <label>META_Site <input id="meta-site" type="text" /></label>
+        <label>META_Date <input id="meta-date" type="text" readonly /></label>
       </section>
 
       <section id="gps-tools">
         <h3>GPS Tools</h3>
-        <label>Capture Mode
-          <select id="capture-mode">
-            <option value="sketch">Sketch</option>
-            <option value="gps">GPS</option>
-          </select>
-        </label>
-        <label>Point capture
-          <select id="gps-point-mode">
-            <option value="manual">Manual</option>
-            <option value="stream">Stream</option>
-          </select>
-        </label>
-        <label>Line capture
-          <select id="gps-line-mode">
-            <option value="manual">Manual</option>
-            <option value="stream">Stream</option>
-          </select>
-        </label>
-        <label>Polygon capture
-          <select id="gps-polygon-mode">
-            <option value="manual">Manual</option>
-            <option value="stream">Stream</option>
-          </select>
-        </label>
-        <div class="grid-2">
-          <button id="gps-enable" type="button">Enable GPS</button>
-          <button id="gps-add-point" type="button">Add GPS Point</button>
-          <button id="gps-stream" type="button">Start GPS Stream</button>
-          <button id="gps-line" type="button">Start Line Recording</button>
-          <button id="gps-polygon" type="button">Start Polygon Recording</button>
-        </div>
         <label>Min distance (m) <input id="gps-min-distance" type="number" min="0" step="0.5" value="3" /></label>
         <label>Min interval (s) <input id="gps-min-interval" type="number" min="0" step="0.5" value="1" /></label>
         <label>Max accuracy (m) <input id="gps-max-accuracy" type="number" min="1" step="1" value="25" /></label>
@@ -83,23 +58,24 @@
 
       <section>
         <h3>Layers & Styling</h3>
-        <label><input id="vis-point" type="checkbox" checked /> Show points</label>
-        <label><input id="vis-line" type="checkbox" checked /> Show lines</label>
-        <label><input id="vis-polygon" type="checkbox" checked /> Show polygons</label>
-
-        <h4>Points</h4>
-        <label>Color <input id="style-point-color" type="color" value="#e63946" /></label>
-        <label>Size <input id="style-point-size" type="number" min="3" max="20" value="7" /></label>
-
-        <h4>Lines</h4>
-        <label>Stroke <input id="style-line-color" type="color" value="#1d3557" /></label>
-        <label>Width <input id="style-line-width" type="number" min="1" max="12" value="3" /></label>
-
-        <h4>Polygons</h4>
-        <label>Stroke <input id="style-polygon-color" type="color" value="#457b9d" /></label>
-        <label>Width <input id="style-polygon-width" type="number" min="1" max="12" value="2" /></label>
-        <label>Fill <input id="style-polygon-fill" type="color" value="#a8dadc" /></label>
-        <label>Fill opacity <input id="style-polygon-opacity" type="number" min="0" max="1" step="0.1" value="0.4" /></label>
+        <div class="layer-row">
+          <span class="layer-geom">Point</span>
+          <input id="vis-point" type="checkbox" checked />
+          <input id="style-point-color" type="color" value="#e63946" />
+          <input id="style-point-size" type="number" min="3" max="20" value="7" />
+        </div>
+        <div class="layer-row">
+          <span class="layer-geom">Line</span>
+          <input id="vis-line" type="checkbox" checked />
+          <input id="style-line-color" type="color" value="#1d3557" />
+          <input id="style-line-width" type="number" min="1" max="12" value="3" />
+        </div>
+        <div class="layer-row">
+          <span class="layer-geom">Polygon</span>
+          <input id="vis-polygon" type="checkbox" checked />
+          <input id="style-polygon-color" type="color" value="#457b9d" />
+          <input id="style-polygon-width" type="number" min="1" max="12" value="2" />
+        </div>
       </section>
 
       <section>
@@ -115,7 +91,15 @@
       </section>
     </aside>
 
-    <div id="status-bar" class="status-bar">Mode: Sketch | GPS accuracy: n/a</div>
+    <div id="coord-hud" class="coord-hud">
+      <button id="copy-coords" type="button" aria-label="Copy coordinates" title="Copy coordinates">⧉</button>
+      <div class="coord-stack">
+        <div id="status-bar" class="hud-mode">Mode: Sketch | GPS accuracy: n/a</div>
+        <div id="coord-latlon">Lat/Lon: --</div>
+        <div id="coord-utm">UTM: --</div>
+        <div id="grid-info" class="grid-info hidden">Grid: --</div>
+      </div>
+    </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
