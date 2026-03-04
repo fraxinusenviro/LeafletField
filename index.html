@@ -20,15 +20,19 @@
     <div id="https-warning" class="https-warning hidden">
       Geolocation may require HTTPS (or localhost) to work reliably.
     </div>
+
     <header class="app-header">
       <button id="wake-lock-btn" class="header-icon-btn" type="button" aria-label="Toggle screen wake lock" title="Prevent screen sleep">
         <i data-lucide="moon-star"></i>
       </button>
-      <img
-        class="app-logo"
-        src="https://static.wixstatic.com/media/7e7d52_71c1430e410040a5936a82003b184f41~mv2.jpg/v1/fill/w_744,h_186,al_c,q_80,usm_0.66_1.00_0.01,enc_avif,quality_auto/LOGO%20TEXT%20c2%20white%20green.jpg"
-        alt="Logo"
-      />
+      <div class="brand-stack">
+        <img
+          class="app-logo"
+          src="https://static.wixstatic.com/media/7e7d52_71c1430e410040a5936a82003b184f41~mv2.jpg/v1/fill/w_744,h_186,al_c,q_80,usm_0.66_1.00_0.01,enc_avif,quality_auto/LOGO%20TEXT%20c2%20white%20green.jpg"
+          alt="Logo"
+        />
+        <div id="app-title" class="app-title">Field Mapper</div>
+      </div>
       <div class="app-header-right">
         <button id="copy-coords" class="header-icon-btn" type="button" aria-label="Copy coordinates" title="Copy coordinates">
           <i data-lucide="copy"></i>
@@ -39,6 +43,7 @@
         </div>
       </div>
     </header>
+
     <div id="map">
       <div id="map-crosshair" class="map-crosshair hidden" aria-hidden="true"></div>
       <div id="grid-info" class="grid-info-map hidden">Grid: --</div>
@@ -48,17 +53,12 @@
       <button id="tools-close" class="tools-close-btn" type="button" aria-label="Close tools menu" title="Close">
         X
       </button>
-      <section>
-        <h3>Sketch</h3>
-        <button id="clear-features" type="button"><i data-lucide="trash-2"></i><span>Clear all features</span></button>
-      </section>
 
       <section>
         <h3>Survey Metadata</h3>
-        <label>META_Surveyor <input id="meta-surveyor" type="text" /></label>
-        <label>META_Project <input id="meta-project" type="text" /></label>
-        <label>META_Site <input id="meta-site" type="text" /></label>
-        <label>META_Date <input id="meta-date" type="text" readonly /></label>
+        <label>Surveyor Initials <input id="meta-surveyor-init" type="text" /></label>
+        <label>Project <input id="meta-project" type="text" /></label>
+        <label>Site <input id="meta-site" type="text" /></label>
       </section>
 
       <section id="gps-tools">
@@ -86,7 +86,7 @@
           <span>On/Off</span>
           <span>Color</span>
           <span>Size</span>
-          <span>Labels On/Off</span>
+          <span>Labels</span>
         </div>
         <div class="layer-row">
           <span class="layer-geom">Point</span>
@@ -112,22 +112,36 @@
       </section>
 
       <section>
-        <h3>Import / Export</h3>
+        <h3>Export Data</h3>
         <button id="download-geojson" type="button"><i data-lucide="download"></i><span>Download GeoJSON</span></button>
-        <label>Import mode
-          <select id="import-mode">
-            <option value="replace">Replace</option>
-            <option value="merge">Merge</option>
-          </select>
-        </label>
+      </section>
+
+      <section>
+        <h3>Import Data</h3>
         <input id="import-file" type="file" accept=".geojson,.json,application/json" />
+        <div id="imported-overlays" class="imported-overlays"></div>
+      </section>
+
+      <section>
+        <h3>OFFLINE MAP CACHE</h3>
+        <label>Additional deeper zoom levels
+          <input id="offline-cache-depth" type="number" min="0" max="8" step="1" value="3" />
+        </label>
+        <div id="offline-cache-estimate" class="offline-cache-estimate">Estimated cache size: --</div>
+        <button id="build-offline-cache" type="button"><i data-lucide="database"></i><span>Build Cache</span></button>
+        <div id="offline-cache-list" class="offline-cache-list"></div>
+      </section>
+
+      <section>
+        <h3>PURGE DATA</h3>
+        <button id="clear-features" type="button"><i data-lucide="trash-2"></i><span>Clear all features</span></button>
       </section>
     </aside>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.475.0/dist/umd/lucide.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
