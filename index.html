@@ -21,14 +21,27 @@
       Geolocation may require HTTPS (or localhost) to work reliably.
     </div>
     <header class="app-header">
+      <button id="wake-lock-btn" class="header-icon-btn" type="button" aria-label="Toggle screen wake lock" title="Prevent screen sleep">
+        <i data-lucide="moon-star"></i>
+      </button>
       <img
         class="app-logo"
         src="https://static.wixstatic.com/media/7e7d52_71c1430e410040a5936a82003b184f41~mv2.jpg/v1/fill/w_744,h_186,al_c,q_80,usm_0.66_1.00_0.01,enc_avif,quality_auto/LOGO%20TEXT%20c2%20white%20green.jpg"
         alt="Logo"
       />
+      <div class="app-header-right">
+        <button id="copy-coords" class="header-icon-btn" type="button" aria-label="Copy coordinates" title="Copy coordinates">
+          <i data-lucide="copy"></i>
+        </button>
+        <div class="header-info-stack">
+          <div id="coord-latlon">Lat/Lon: --</div>
+          <div id="coord-utm">UTM: --</div>
+        </div>
+      </div>
     </header>
     <div id="map">
       <div id="map-crosshair" class="map-crosshair hidden" aria-hidden="true"></div>
+      <div id="grid-info" class="grid-info-map hidden">Grid: --</div>
     </div>
 
     <aside id="tools-panel" class="tools-panel hidden">
@@ -37,7 +50,7 @@
       </button>
       <section>
         <h3>Sketch</h3>
-        <button id="clear-features" type="button">Clear all features</button>
+        <button id="clear-features" type="button"><i data-lucide="trash-2"></i><span>Clear all features</span></button>
       </section>
 
       <section>
@@ -53,34 +66,54 @@
         <label>Min distance (m) <input id="gps-min-distance" type="number" min="0" step="0.5" value="3" /></label>
         <label>Min interval (s) <input id="gps-min-interval" type="number" min="0" step="0.5" value="1" /></label>
         <label>Max accuracy (m) <input id="gps-max-accuracy" type="number" min="1" step="1" value="25" /></label>
+        <label class="toggle-inline">Center on User Position <input id="gps-follow-user" type="checkbox" /></label>
         <div id="gps-status">GPS inactive</div>
+      </section>
+
+      <section id="type-presets">
+        <h3>Presets</h3>
+        <label>Type Preset 1 <input id="type-preset-1" type="text" maxlength="64" /></label>
+        <label>Type Preset 2 <input id="type-preset-2" type="text" maxlength="64" /></label>
+        <label>Type Preset 3 <input id="type-preset-3" type="text" maxlength="64" /></label>
+        <label>Type Preset 4 <input id="type-preset-4" type="text" maxlength="64" /></label>
+        <label>Type Preset 5 <input id="type-preset-5" type="text" maxlength="64" /></label>
       </section>
 
       <section>
         <h3>Layers & Styling</h3>
+        <div class="layer-header">
+          <span>Geometry</span>
+          <span>On/Off</span>
+          <span>Color</span>
+          <span>Size</span>
+          <span>Labels On/Off</span>
+        </div>
         <div class="layer-row">
           <span class="layer-geom">Point</span>
           <input id="vis-point" type="checkbox" checked />
           <input id="style-point-color" type="color" value="#e63946" />
           <input id="style-point-size" type="number" min="3" max="20" value="7" />
+          <input id="label-point" type="checkbox" />
         </div>
         <div class="layer-row">
           <span class="layer-geom">Line</span>
           <input id="vis-line" type="checkbox" checked />
           <input id="style-line-color" type="color" value="#1d3557" />
           <input id="style-line-width" type="number" min="1" max="12" value="3" />
+          <input id="label-line" type="checkbox" />
         </div>
         <div class="layer-row">
           <span class="layer-geom">Polygon</span>
           <input id="vis-polygon" type="checkbox" checked />
           <input id="style-polygon-color" type="color" value="#457b9d" />
           <input id="style-polygon-width" type="number" min="1" max="12" value="2" />
+          <input id="label-polygon" type="checkbox" />
         </div>
       </section>
 
       <section>
         <h3>Import / Export</h3>
-        <button id="download-geojson" type="button">Download GeoJSON</button>
+        <button id="download-geojson" type="button"><i data-lucide="download"></i><span>Download GeoJSON</span></button>
         <label>Import mode
           <select id="import-mode">
             <option value="replace">Replace</option>
@@ -91,19 +124,10 @@
       </section>
     </aside>
 
-    <div id="coord-hud" class="coord-hud">
-      <button id="copy-coords" type="button" aria-label="Copy coordinates" title="Copy coordinates">⧉</button>
-      <div class="coord-stack">
-        <div id="status-bar" class="hud-mode">Mode: Sketch | GPS accuracy: n/a</div>
-        <div id="coord-latlon">Lat/Lon: --</div>
-        <div id="coord-utm">UTM: --</div>
-        <div id="grid-info" class="grid-info hidden">Grid: --</div>
-      </div>
-    </div>
-
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <script src="app.js"></script>
   </body>
 </html>
