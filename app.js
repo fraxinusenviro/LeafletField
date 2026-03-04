@@ -118,9 +118,17 @@ function ensureFeatureProperties(feature, sourceHint = 'sketch') {
     maxZoom: 24
   });
 
-  if (!map._controlCorners.topcenter) {
-    const topCenter = L.DomUtil.create('div', 'leaflet-top leaflet-center', map._controlContainer);
-    map._controlCorners.topcenter = topCenter;
+  if (!map._controlCorners.topline) {
+    const topLine = L.DomUtil.create('div', 'leaflet-top leaflet-topline', map._controlContainer);
+    map._controlCorners.topline = topLine;
+  }
+  if (!map._controlCorners.secondline) {
+    const secondLine = L.DomUtil.create('div', 'leaflet-top leaflet-secondline', map._controlContainer);
+    map._controlCorners.secondline = secondLine;
+  }
+  if (!map._controlCorners.thirdline) {
+    const thirdLine = L.DomUtil.create('div', 'leaflet-top leaflet-thirdline', map._controlContainer);
+    map._controlCorners.thirdline = thirdLine;
   }
   
   if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
@@ -195,7 +203,7 @@ function ensureFeatureProperties(feature, sourceHint = 'sketch') {
   if (!basemaps[currentBasemap]) currentBasemap = DEFAULTS.basemap;
   let activeOnlineBasemap = currentBasemap === OFFLINE_BASEMAP_NAME ? DEFAULTS.basemap : currentBasemap;
   basemaps[currentBasemap].addTo(map);
-  const basemapControl = L.control.layers(basemaps, null, { position: 'topright' }).addTo(map);
+  const basemapControl = L.control.layers(basemaps, null, { position: 'thirdline' }).addTo(map);
   L.control.scale({ position: 'bottomleft', imperial: false, metric: true, maxWidth: 140 }).addTo(map);
   function selectedOfflineCacheName() {
     const record = offlineCacheMeta.find((item) => item.id === selectedOfflineCacheId);
@@ -275,7 +283,8 @@ const offlineCacheEstimateEl = document.getElementById('offline-cache-estimate')
 const buildOfflineCacheBtn = document.getElementById('build-offline-cache');
 const offlineCacheListEl = document.getElementById('offline-cache-list');
 const appTitleEl = document.getElementById('app-title');
-const wakeLockBtn = document.getElementById('wake-lock-btn');
+let wakeLockBtn = null;
+let fullscreenBtn = null;
 const gpsFollowUserInput = document.getElementById('gps-follow-user');
 let crosshairActive = false;
 let latestCoordText = '';
@@ -302,6 +311,8 @@ const ICON_TEXT_FALLBACK = {
   download: 'DL',
   database: 'DB',
   focus: 'ZOOM',
+  maximize: 'FULL',
+  minimize: 'EXIT',
   'trash-2': 'DEL',
   'sun-medium': 'ON',
   'moon-star': 'OFF',
@@ -358,14 +369,6 @@ function normalizeMapCacheMeta(items) {
 
 function saveOfflineCacheMeta() {
   localStorage.setItem(STORAGE_KEYS.mapCaches, JSON.stringify(offlineCacheMeta));
-}
-
-function setSelectedOfflineCache(cacheId) {
-  selectedOfflineCacheId = cacheId || '';
-  if (selectedOfflineCacheId) localStorage.setItem(STORAGE_KEYS.selectedMapCacheId, selectedOfflineCacheId);
-  else localStorage.removeItem(STORAGE_KEYS.selectedMapCacheId);
-  if (selectedOfflineBasemap) selectedOfflineBasemap.redraw();
-  updateOfflineBasemapControlLabel();
 }
 
 function zoomToOfflineCacheExtent(cacheId) {
@@ -547,6 +550,14 @@ const OfflineCacheTileLayer = L.GridLayer.extend({
   }
 });
 
+function setSelectedOfflineCache(cacheId) {
+  selectedOfflineCacheId = cacheId || '';
+  if (selectedOfflineCacheId) localStorage.setItem(STORAGE_KEYS.selectedMapCacheId, selectedOfflineCacheId);
+  else localStorage.removeItem(STORAGE_KEYS.selectedMapCacheId);
+  if (selectedOfflineBasemap) selectedOfflineBasemap.redraw();
+  updateOfflineBasemapControlLabel();
+}
+
 function enableOfflineCache(cacheId) {
   const record = offlineCacheMeta.find((item) => item.id === cacheId);
   if (!record) return;
@@ -616,11 +627,11 @@ async function rebuildOfflineCacheList() {
   }
 
   for (const record of offlineCacheMeta) {
-    disableOfflineCache(record.id);
+    if (!record.enabled) continue;
+    enableOfflineCache(record.id);
   }
   saveOfflineCacheMeta();
   renderOfflineCacheList();
-  updateOfflineBasemapControlLabel();
   updateOfflineCacheEstimate();
 }
 
@@ -952,12 +963,9 @@ if (toolsCloseButton) {
 }
 
 let singlePointToolButton = null;
-let singlePointToolMenu = null;
 let streamPointToolButton = null;
-let streamPointToolMenu = null;
+let mapTypePresetSelect = null;
 let typePresets = parseStored(STORAGE_KEYS.typePresets, DEFAULTS.typePresets);
-let nextSinglePointTypeOverride = '';
-let streamPointTypeOverride = '';
 typePresets = normalizeTypePresets(typePresets);
 let pointAction = 'idle';
 let pendingSingleGpsPoint = false;
@@ -965,7 +973,6 @@ let tapPointHandler = null;
 let trackToolButton = null;
 let customLineToolButton = null;
 let customLinePopover = null;
-let lineAction = 'idle';
 let selectedLayer = null;
 let selectModeActive = false;
 let selectToolButton = null;
@@ -1055,6 +1062,29 @@ const UtmGridControl = L.Control.extend({
 });
 new UtmGridControl({ position: 'topleft' }).addTo(map);
 
+const MapUtilityControl = L.Control.extend({
+  onAdd() {
+    const wrap = L.DomUtil.create('div', 'map-utility-controls');
+
+    wakeLockBtn = L.DomUtil.create('button', 'header-icon-btn', wrap);
+    wakeLockBtn.type = 'button';
+    wakeLockBtn.setAttribute('aria-label', 'Toggle screen wake lock');
+    wakeLockBtn.title = 'Prevent screen sleep';
+    wakeLockBtn.innerHTML = '<i data-lucide="moon-star"></i>';
+
+    fullscreenBtn = L.DomUtil.create('button', 'header-icon-btn', wrap);
+    fullscreenBtn.type = 'button';
+    fullscreenBtn.setAttribute('aria-label', 'Toggle fullscreen mode');
+    fullscreenBtn.title = 'Toggle fullscreen';
+    fullscreenBtn.innerHTML = '<i data-lucide="maximize"></i>';
+
+    L.DomEvent.disableClickPropagation(wrap);
+    L.DomEvent.disableScrollPropagation(wrap);
+    return wrap;
+  }
+});
+new MapUtilityControl({ position: 'topline' }).addTo(map);
+
 const GpsAccuracyControl = L.Control.extend({
   onAdd() {
     const container = L.DomUtil.create('div', 'gps-accuracy-overlay gps-accuracy-na');
@@ -1066,11 +1096,11 @@ const GpsAccuracyControl = L.Control.extend({
     return container;
   }
 });
-new GpsAccuracyControl({ position: 'topright' }).addTo(map);
+new GpsAccuracyControl({ position: 'secondline' }).addTo(map);
 
 function setLineButtonsActive() {
-  if (trackToolButton) trackToolButton.classList.toggle('active', lineAction === 'track' && gps.trackRec);
-  if (customLineToolButton) customLineToolButton.classList.toggle('active', lineAction === 'custom' && gps.customLineRec);
+  if (trackToolButton) trackToolButton.classList.toggle('active', gps.trackRec);
+  if (customLineToolButton) customLineToolButton.classList.toggle('active', gps.customLineRec);
 }
 
 function closeCustomLinePopover() {
@@ -1109,14 +1139,13 @@ function stopTrackRecording(save = true) {
     addGpsFeature({ type: 'LineString', coordinates: gps.trackPoints }, {
       type: 'TRACK LOG',
       notes: 'NULL'
-    });
+    }, { applyPresetType: false });
   } else if (save && gps.trackPoints.length > 0) {
     alert('Need at least 2 accepted points to save a track.');
   }
   gps.trackPoints = [];
   gps.trackStartTime = null;
   gps.trackPreviewLayer = removeLinePreview(gps.trackPreviewLayer);
-  if (lineAction === 'track') lineAction = 'idle';
   setLineButtonsActive();
 }
 
@@ -1134,12 +1163,10 @@ function stopCustomLineRecording(save = true) {
   gps.customLinePoints = [];
   gps.customLineAttrs = null;
   gps.customLinePreviewLayer = removeLinePreview(gps.customLinePreviewLayer);
-  if (lineAction === 'custom') lineAction = 'idle';
   setLineButtonsActive();
 }
 
 function stopAdvancedLineTools(save = false) {
-  stopTrackRecording(save);
   stopCustomLineRecording(save);
 }
 
@@ -1153,14 +1180,12 @@ function startTrackRecording() {
   gps.polygonRec = false;
   pendingSingleGpsPoint = false;
   stopTapPointPlacement();
-  stopCustomLineRecording(true);
   lineButtonDefaults();
   gps.trackRec = true;
   gps.trackPoints = [];
   gps.trackStartTime = new Date();
   gps.trackPreviewLayer = removeLinePreview(gps.trackPreviewLayer);
   gps.trackPreviewLayer = L.polyline([], linePreviewStyle()).addTo(map);
-  lineAction = 'track';
   setLineButtonsActive();
   updateStatus();
 }
@@ -1175,27 +1200,18 @@ function startCustomLineRecording(attrs) {
   gps.polygonRec = false;
   pendingSingleGpsPoint = false;
   stopTapPointPlacement();
-  stopTrackRecording(true);
   lineButtonDefaults();
   gps.customLineRec = true;
   gps.customLinePoints = [];
   gps.customLineAttrs = attrs;
   gps.customLinePreviewLayer = removeLinePreview(gps.customLinePreviewLayer);
   gps.customLinePreviewLayer = L.polyline([], linePreviewStyle()).addTo(map);
-  lineAction = 'custom';
   setLineButtonsActive();
   updateStatus();
 }
 
 function closePointMenus() {
-  if (singlePointToolMenu) singlePointToolMenu.classList.add('hidden');
-  if (streamPointToolMenu) streamPointToolMenu.classList.add('hidden');
-}
-
-function takeSinglePointTypeOverride() {
-  const type = String(nextSinglePointTypeOverride || '').trim();
-  nextSinglePointTypeOverride = '';
-  return type;
+  return;
 }
 
 function setPointButtonsActive() {
@@ -1207,42 +1223,22 @@ function setPointButtonsActive() {
   }
 }
 
-function buildPresetMenu(menuEl, onSelect) {
-  if (!menuEl) return;
-  const presets = normalizeTypePresets(typePresets);
-  const visible = presets
-    .map((value, index) => ({ value, index }))
-    .filter((item) => item.value);
-  if (!visible.length) {
-    menuEl.innerHTML = '<div class="preset-empty">No presets set. Add values in Tools > Presets.</div>';
-    return;
-  }
-
-  menuEl.innerHTML = visible
-    .map((item) => `<button type="button" data-type-index="${item.index}">${escapeHtml(item.value)}</button>`)
-    .join('');
-
-  menuEl.querySelectorAll('button').forEach((button) => {
-    L.DomEvent.on(button, 'click', (event) => {
-      L.DomEvent.stop(event);
-      const index = Number(button.dataset.typeIndex);
-      onSelect(presets[index] || '');
-    });
-  });
+function selectedMapTypePreset() {
+  if (!mapTypePresetSelect) return '';
+  const value = String(mapTypePresetSelect.value || '').trim();
+  return value && value !== '__NONE__' ? value : '';
 }
 
-function refreshPointPresetMenus() {
-  buildPresetMenu(singlePointToolMenu, (selectedType) => {
-    nextSinglePointTypeOverride = selectedType;
-    closePointMenus();
-    handlePointAction('gps-single');
-  });
-
-  buildPresetMenu(streamPointToolMenu, (selectedType) => {
-    streamPointTypeOverride = selectedType;
-    closePointMenus();
-    handlePointAction('gps-stream');
-  });
+function renderMapTypePresetOptions() {
+  if (!mapTypePresetSelect) return;
+  const selectedBefore = String(mapTypePresetSelect.value || '__NONE__');
+  const presets = normalizeTypePresets(typePresets).filter((value) => value);
+  const options = ['<option value="__NONE__">None</option>']
+    .concat(presets.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`))
+    .join('');
+  mapTypePresetSelect.innerHTML = options;
+  if (presets.includes(selectedBefore)) mapTypePresetSelect.value = selectedBefore;
+  else mapTypePresetSelect.value = '__NONE__';
 }
 
 function stopTapPointPlacement() {
@@ -1309,7 +1305,6 @@ function handlePointAction(action) {
 
   if (action === 'gps-stream' && pointAction === 'gps-stream' && gps.pointStream) {
     gps.pointStream = false;
-    streamPointTypeOverride = '';
     deactivatePointAction();
     updateStatus();
     return;
@@ -1341,19 +1336,14 @@ const SinglePointToolControl = L.Control.extend({
     singlePointToolButton = L.DomUtil.create('button', 'point-tool-btn', wrap);
     singlePointToolButton.type = 'button';
     singlePointToolButton.innerHTML = '<i data-lucide="map-pin"></i>';
-    singlePointToolButton.title = 'Single point presets';
-
-    singlePointToolMenu = L.DomUtil.create('div', 'point-tool-menu hidden', wrap);
-    refreshPointPresetMenus();
+    singlePointToolButton.title = 'Create single GPS point';
 
     L.DomEvent.disableClickPropagation(wrap);
     L.DomEvent.disableScrollPropagation(wrap);
 
     L.DomEvent.on(singlePointToolButton, 'click', (e) => {
       L.DomEvent.stop(e);
-      if (streamPointToolMenu) streamPointToolMenu.classList.add('hidden');
-      refreshPointPresetMenus();
-      singlePointToolMenu.classList.toggle('hidden');
+      handlePointAction('gps-single');
     });
 
     return wrap;
@@ -1367,18 +1357,13 @@ const StreamPointToolControl = L.Control.extend({
     streamPointToolButton = L.DomUtil.create('button', 'point-tool-btn', wrap);
     streamPointToolButton.type = 'button';
     streamPointToolButton.innerHTML = '<i data-lucide="waypoints"></i>';
-    streamPointToolButton.title = 'Stream point presets';
-
-    streamPointToolMenu = L.DomUtil.create('div', 'point-tool-menu hidden', wrap);
-    refreshPointPresetMenus();
+    streamPointToolButton.title = 'Start/stop GPS point stream';
 
     L.DomEvent.disableClickPropagation(wrap);
     L.DomEvent.disableScrollPropagation(wrap);
     L.DomEvent.on(streamPointToolButton, 'click', (event) => {
       L.DomEvent.stop(event);
-      if (singlePointToolMenu) singlePointToolMenu.classList.add('hidden');
-      refreshPointPresetMenus();
-      streamPointToolMenu.classList.toggle('hidden');
+      handlePointAction('gps-stream');
     });
     return wrap;
   }
@@ -1400,7 +1385,7 @@ const TrackToolControl = L.Control.extend({
       L.DomEvent.stop(e);
       closeCustomLinePopover();
       closePointMenus();
-      if (gps.trackRec && lineAction === 'track') {
+      if (gps.trackRec) {
         stopTrackRecording(true);
       } else {
         startTrackRecording();
@@ -1433,11 +1418,10 @@ const CustomLineToolControl = L.Control.extend({
     L.DomEvent.on(customLineToolButton, 'click', (e) => {
       L.DomEvent.stop(e);
       closePointMenus();
-      if (gps.customLineRec && lineAction === 'custom') {
+      if (gps.customLineRec) {
         stopCustomLineRecording(true);
         closeCustomLinePopover();
       } else {
-        if (gps.trackRec && lineAction === 'track') stopTrackRecording(true);
         customLinePopover.classList.toggle('hidden');
       }
       updateStatus();
@@ -1496,9 +1480,23 @@ const drawnItems = new L.FeatureGroup().addTo(map);
     }
     return pointTypeColors[key];
   }
+
+  const TypePresetControl = L.Control.extend({
+    onAdd() {
+      const wrap = L.DomUtil.create('div', 'map-type-preset-wrap');
+      mapTypePresetSelect = L.DomUtil.create('select', 'map-type-preset-select', wrap);
+      mapTypePresetSelect.title = 'TYPE preset for new features';
+      renderMapTypePresetOptions();
+      L.DomEvent.disableClickPropagation(wrap);
+      L.DomEvent.disableScrollPropagation(wrap);
+      L.DomEvent.on(mapTypePresetSelect, 'click', L.DomEvent.stopPropagation);
+      return wrap;
+    }
+  });
+  new TypePresetControl({ position: 'topline' }).addTo(map);
   
   const drawControl = new L.Control.Draw({
-    position: 'topcenter',
+    position: 'secondline',
     draw: { rectangle: false, circle: false, circlemarker: false, marker: true, polyline: true, polygon: true },
     edit: { featureGroup: drawnItems }
   });
@@ -1690,6 +1688,7 @@ map.on(L.Draw.Event.CREATED, (e) => {
   let layer = e.layer;
   if (layer instanceof L.Marker && !(layer instanceof L.CircleMarker)) layer = L.circleMarker(layer.getLatLng());
   layer.feature = ensureFeatureProperties(layer.toGeoJSON(), 'sketch');
+  layer.feature.properties.type = selectedMapTypePreset();
   touchFeature(layer.feature);
   applyStyle(layer);
   applyFeatureLabel(layer);
@@ -1869,7 +1868,7 @@ function wireTypePresetInputs() {
   const savePresets = () => {
     typePresets = ids.map((id) => (document.getElementById(id)?.value || '').trim());
     localStorage.setItem(STORAGE_KEYS.typePresets, JSON.stringify(typePresets));
-    refreshPointPresetMenus();
+    renderMapTypePresetOptions();
   };
 
   ids.forEach((id, index) => {
@@ -2276,7 +2275,7 @@ function updateGpsAccuracyBadge(accuracy) {
   if (!gpsAccuracyOverlayEl || !gpsAccuracyTextEl) return;
   gpsAccuracyOverlayEl.classList.remove('gps-accuracy-good', 'gps-accuracy-warn', 'gps-accuracy-bad', 'gps-accuracy-na');
   if (Number.isFinite(accuracy)) {
-    gpsAccuracyTextEl.textContent = `${accuracy.toFixed(1)}m`;
+    gpsAccuracyTextEl.textContent = `+-${accuracy.toFixed(1)}m`;
     if (accuracy < 3) gpsAccuracyOverlayEl.classList.add('gps-accuracy-good');
     else if (accuracy <= 6) gpsAccuracyOverlayEl.classList.add('gps-accuracy-warn');
     else gpsAccuracyOverlayEl.classList.add('gps-accuracy-bad');
@@ -2323,26 +2322,25 @@ function stopGps() {
   gps.polygonPoints = [];
   gps.trackPreviewLayer = removeLinePreview(gps.trackPreviewLayer);
   gps.customLinePreviewLayer = removeLinePreview(gps.customLinePreviewLayer);
+  stopTrackRecording(false);
   stopAdvancedLineTools(false);
   if (pointAction === 'gps-stream' || pointAction === 'gps-single') deactivatePointAction();
   updateGpsAccuracyBadge(null);
   updateStatus();
 }
 
-function addGpsFeature(geometry, extraProperties = {}) {
+function addGpsFeature(geometry, extraProperties = {}, options = {}) {
   if (!requireSurveyMetadata()) return;
-  const layer = addFeatureToMap({ type: 'Feature', properties: { source: 'gps', ...extraProperties }, geometry });
+  const properties = { source: 'gps', ...extraProperties };
+  if (options.applyPresetType !== false) properties.type = selectedMapTypePreset();
+  const layer = addFeatureToMap({ type: 'Feature', properties, geometry });
   if (layer?.feature) touchFeature(layer.feature);
   saveFeatures();
 }
 
 function addCurrentFixPoint() {
   if (!gps.lastFix) return;
-  const typeOverride = takeSinglePointTypeOverride();
-  addGpsFeature(
-    { type: 'Point', coordinates: [gps.lastFix.latlng.lng, gps.lastFix.latlng.lat] },
-    typeOverride ? { type: typeOverride } : {}
-  );
+  addGpsFeature({ type: 'Point', coordinates: [gps.lastFix.latlng.lng, gps.lastFix.latlng.lat] });
 }
 
 function onGpsFix(position) {
@@ -2359,7 +2357,7 @@ function onGpsFix(position) {
     gps.accuracyCircle.setLatLng(latlng).setRadius(accuracy);
   }
 
-  if (gps.captureMode !== 'gps') { updateStatus(); return; }
+  if (gps.captureMode !== 'gps' && !gps.trackRec) { updateStatus(); return; }
 
   const cfg = gpsConfig();
   if (accuracy > cfg.maxAccuracy) { updateStatus(); return; }
@@ -2379,8 +2377,7 @@ function onGpsFix(position) {
   }
 
   if (gps.pointStream) {
-    const streamProps = streamPointTypeOverride ? { type: streamPointTypeOverride } : {};
-    addGpsFeature({ type: 'Point', coordinates: [latlng.lng, latlng.lat] }, streamProps);
+    addGpsFeature({ type: 'Point', coordinates: [latlng.lng, latlng.lat] });
   }
   if (gps.lineRec) gps.linePoints.push([latlng.lng, latlng.lat]);
   if (gps.trackRec) {
@@ -2415,7 +2412,7 @@ function setCaptureMode(mode) {
 }
 
 map.on(L.Draw.Event.DRAWSTART, () => {
-  setCaptureMode('sketch');
+  if (!gps.trackRec) setCaptureMode('sketch');
   stopAdvancedLineTools(true);
   deactivatePointAction();
 });
@@ -2432,6 +2429,42 @@ map.on('moveend zoomend', () => {
   if (utmGridActive) renderUtmGrid();
   updateOfflineCacheEstimateSoon();
 });
+
+function isFullscreenActive() {
+  return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+}
+
+function updateFullscreenButtonState() {
+  if (!fullscreenBtn) return;
+  const active = isFullscreenActive();
+  fullscreenBtn.classList.toggle('active', active);
+  fullscreenBtn.innerHTML = active
+    ? '<i data-lucide="minimize"></i>'
+    : '<i data-lucide="maximize"></i>';
+  initializeIcons();
+}
+
+async function toggleFullscreen() {
+  const docEl = document.documentElement;
+  const active = isFullscreenActive();
+  try {
+    if (!active) {
+      if (docEl.requestFullscreen) await docEl.requestFullscreen();
+      else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
+      else {
+        alert('Fullscreen is not supported on this browser.');
+        return;
+      }
+    } else {
+      if (document.exitFullscreen) await document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+  } catch (error) {
+    alert(`Unable to change fullscreen mode: ${error.message}`);
+  } finally {
+    updateFullscreenButtonState();
+  }
+}
 
 async function setWakeLock(enabled, options = {}) {
   const silent = Boolean(options.silent);
@@ -2483,6 +2516,15 @@ if (wakeLockBtn) {
   });
 }
 
+if (fullscreenBtn) {
+  fullscreenBtn.addEventListener('click', async () => {
+    await toggleFullscreen();
+  });
+}
+
+document.addEventListener('fullscreenchange', updateFullscreenButtonState);
+document.addEventListener('webkitfullscreenchange', updateFullscreenButtonState);
+
 if (gpsFollowUserInput) {
   gps.followUser = gpsFollowUserInput.checked;
   gpsFollowUserInput.addEventListener('change', (event) => {
@@ -2520,6 +2562,7 @@ setWakeLock(true, { silent: true });
 updateStatus();
 updateCoordinateHud(map.getCenter());
 initializeIcons();
+updateFullscreenButtonState();
 if (appTitleEl) appTitleEl.textContent = `Field Mapper ${buildIdentifier(new Date())}`;
 
 map.getContainer().addEventListener('touchmove', (e) => {
@@ -2527,3 +2570,5 @@ map.getContainer().addEventListener('touchmove', (e) => {
     e.preventDefault();
   }
 }, { passive: false });
+
+
