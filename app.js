@@ -7,7 +7,9 @@
     labelVisibility: 'lfm_label_visibility',
     pointTypeColors: 'lfm_point_type_colors',
     typePresets: 'lfm_type_presets',
-    surveyMeta: 'lfm_survey_meta'
+    surveyMeta: 'lfm_survey_meta',
+    mapCaches: 'lfm_map_caches',
+    selectedMapCacheId: 'lfm_selected_map_cache_id'
   };
   
   const DEFAULTS = {
@@ -112,26 +114,122 @@ function ensureFeatureProperties(feature, sourceHint = 'sketch') {
   const savedMap = parseStored(STORAGE_KEYS.mapView, null);
   const map = L.map('map', {
     center: savedMap?.center || DEFAULTS.center,
-    zoom: savedMap?.zoom || DEFAULTS.zoom
+    zoom: savedMap?.zoom || DEFAULTS.zoom,
+    maxZoom: 24
   });
+
+  if (!map._controlCorners.topcenter) {
+    const topCenter = L.DomUtil.create('div', 'leaflet-top leaflet-center', map._controlContainer);
+    map._controlCorners.topcenter = topCenter;
+  }
   
   if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
     document.getElementById('https-warning').classList.remove('hidden');
   }
+
+  const BLANK_TILE_DATA_URI = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+  const offlineCacheMeta = parseStored(STORAGE_KEYS.mapCaches, []);
+  const activeOfflineCacheLayers = new Map();
+  const OFFLINE_BASEMAP_NAME = 'Offline Cache';
+  let selectedOfflineCacheId = localStorage.getItem(STORAGE_KEYS.selectedMapCacheId) || '';
+  const selectedOfflineBasemapLayer = L.GridLayer.extend({
+    createTile(coords, done) {
+      const img = document.createElement('img');
+      img.alt = '';
+      img.setAttribute('role', 'presentation');
+      const selectedRecord = offlineCacheMeta.find((item) => item.id === selectedOfflineCacheId);
+      if (!selectedRecord || !('caches' in window)) {
+        img.src = BLANK_TILE_DATA_URI;
+        done(null, img);
+        return img;
+      }
+      if (coords.z < selectedRecord.zoomStart || coords.z > selectedRecord.zoomEnd) {
+        img.src = BLANK_TILE_DATA_URI;
+        done(null, img);
+        return img;
+      }
+      const tileUrl = buildTileUrlFromTemplate(selectedRecord.urlTemplate, coords, selectedRecord.subdomain || 'a');
+      caches.open(selectedRecord.cacheName)
+        .then((cache) => cache.match(tileUrl))
+        .then((response) => (response ? response.blob() : null))
+        .then((blob) => {
+          if (!blob) {
+            img.src = BLANK_TILE_DATA_URI;
+            done(null, img);
+            return;
+          }
+          const objectUrl = URL.createObjectURL(blob);
+          img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            done(null, img);
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            img.src = BLANK_TILE_DATA_URI;
+            done(null, img);
+          };
+          img.src = objectUrl;
+        })
+        .catch(() => {
+          img.src = BLANK_TILE_DATA_URI;
+          done(null, img);
+        });
+      return img;
+    }
+  });
+  const selectedOfflineBasemap = new selectedOfflineBasemapLayer({ tileSize: 256, minZoom: 0, maxZoom: 24 });
   
+  const basemapTileOptions = {
+    maxZoom: 24,
+    maxNativeZoom: 19
+  };
   const basemaps = {
-    'OpenStreetMap Standard': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }),
-    'Esri World Imagery': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri' }),
-    'Esri World Topo': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri' }),
-    'Carto Positron': L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap contributors &copy; CARTO' })
+    'OpenStreetMap Standard': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { ...basemapTileOptions, attribution: '&copy; OpenStreetMap contributors' }),
+    'Esri World Imagery': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { ...basemapTileOptions, attribution: 'Tiles &copy; Esri' }),
+    'Esri World Topo': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', { ...basemapTileOptions, attribution: 'Tiles &copy; Esri' }),
+    'Carto Positron': L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { ...basemapTileOptions, attribution: '&copy; OpenStreetMap contributors &copy; CARTO' }),
+    [OFFLINE_BASEMAP_NAME]: selectedOfflineBasemap
   };
   
   let currentBasemap = localStorage.getItem(STORAGE_KEYS.basemap) || DEFAULTS.basemap;
   if (!basemaps[currentBasemap]) currentBasemap = DEFAULTS.basemap;
+  let activeOnlineBasemap = currentBasemap === OFFLINE_BASEMAP_NAME ? DEFAULTS.basemap : currentBasemap;
   basemaps[currentBasemap].addTo(map);
-  L.control.layers(basemaps, null, { position: 'topright' }).addTo(map);
+  const basemapControl = L.control.layers(basemaps, null, { position: 'topright' }).addTo(map);
   L.control.scale({ position: 'bottomleft', imperial: false, metric: true, maxWidth: 140 }).addTo(map);
-  map.on('baselayerchange', (e) => localStorage.setItem(STORAGE_KEYS.basemap, e.name));
+  function selectedOfflineCacheName() {
+    const record = offlineCacheMeta.find((item) => item.id === selectedOfflineCacheId);
+    return record?.displayName || '';
+  }
+
+  function offlineBasemapControlTitle() {
+    const selectedName = selectedOfflineCacheName();
+    return selectedName ? `${OFFLINE_BASEMAP_NAME}: ${selectedName}` : `${OFFLINE_BASEMAP_NAME}: (none selected)`;
+  }
+
+  function updateOfflineBasemapControlLabel() {
+    const layerMeta = basemapControl?._layers?.find((item) => item?.layer === selectedOfflineBasemap);
+    if (layerMeta) layerMeta.name = offlineBasemapControlTitle();
+    const labels = basemapControl?._form?.querySelectorAll('label') || [];
+    labels.forEach((label) => {
+      const span = label.querySelector('span');
+      if (!span) return;
+      const text = span.textContent || '';
+      if (!text.startsWith(OFFLINE_BASEMAP_NAME)) return;
+      span.textContent = offlineBasemapControlTitle();
+    });
+  }
+
+  map.on('baselayerchange', (e) => {
+    currentBasemap = e.name;
+    if (e.name !== OFFLINE_BASEMAP_NAME) activeOnlineBasemap = e.name;
+    localStorage.setItem(STORAGE_KEYS.basemap, e.name);
+    updateOfflineCacheEstimateSoon();
+    if (e.name === OFFLINE_BASEMAP_NAME && !selectedOfflineCacheId) {
+      alert('No offline cache selected in Tools > OFFLINE MAP CACHE.');
+    }
+  });
+  updateOfflineBasemapControlLabel();
   map.on('moveend zoomend', () => {
     localStorage.setItem(STORAGE_KEYS.mapView, JSON.stringify({ center: [map.getCenter().lat, map.getCenter().lng], zoom: map.getZoom() }));
   });
@@ -171,6 +269,11 @@ const coordLatLonEl = document.getElementById('coord-latlon');
 const coordUtmEl = document.getElementById('coord-utm');
 const gridInfoEl = document.getElementById('grid-info');
 const copyCoordsBtn = document.getElementById('copy-coords');
+const importedOverlaysEl = document.getElementById('imported-overlays');
+const offlineCacheDepthInput = document.getElementById('offline-cache-depth');
+const offlineCacheEstimateEl = document.getElementById('offline-cache-estimate');
+const buildOfflineCacheBtn = document.getElementById('build-offline-cache');
+const offlineCacheListEl = document.getElementById('offline-cache-list');
 const appTitleEl = document.getElementById('app-title');
 const wakeLockBtn = document.getElementById('wake-lock-btn');
 const gpsFollowUserInput = document.getElementById('gps-follow-user');
@@ -183,10 +286,44 @@ let wakeLockSentinel = null;
 let wakeLockRequested = false;
 const utmGridLayer = L.layerGroup().addTo(map);
 const GRID_STEPS = [10, 50, 100, 250, 500, 1000, 2000, 5000, 10000];
+const importedOverlayRecords = [];
+let offlineCacheEstimateRaf = null;
+const ICON_TEXT_FALLBACK = {
+  'sliders-horizontal': '|||',
+  x: 'x',
+  'mouse-pointer-click': 'SEL',
+  crosshair: '+',
+  'locate-fixed': 'LOC',
+  'grid-3x3': '#',
+  'map-pin': 'P',
+  waypoints: 'PTS',
+  route: 'TRK',
+  'pen-line': 'LN',
+  download: 'DL',
+  database: 'DB',
+  focus: 'ZOOM',
+  'trash-2': 'DEL',
+  'sun-medium': 'ON',
+  'moon-star': 'OFF',
+  check: 'OK',
+  copy: 'CP'
+};
+const IMPORTED_DEFAULT_STYLE = {
+  Point: { visible: true, color: '#ffffff', size: 3, stroke: '#000000', strokeWidth: 1 },
+  LineString: { visible: true, color: '#000000', size: 2 },
+  Polygon: { visible: true, color: '#000000', size: 2 }
+};
 
 function initializeIcons() {
-  if (!window.lucide?.createIcons) return;
-  window.lucide.createIcons({ attrs: { width: 22, height: 22, 'stroke-width': 2.2 } });
+  if (window.lucide?.createIcons) {
+    window.lucide.createIcons({ attrs: { width: 22, height: 22, 'stroke-width': 2.2 } });
+    return;
+  }
+  document.querySelectorAll('i[data-lucide]').forEach((el) => {
+    const key = el.getAttribute('data-lucide') || '';
+    el.classList.add('icon-fallback');
+    el.textContent = ICON_TEXT_FALLBACK[key] || '?';
+  });
 }
 
 function normalizeTypePresets(values) {
@@ -194,6 +331,605 @@ function normalizeTypePresets(values) {
   const cleaned = values.slice(0, 5).map((value) => String(value || '').trim());
   while (cleaned.length < 5) cleaned.push('');
   return cleaned;
+}
+
+function normalizeMapCacheMeta(items) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter((item) => item && typeof item === 'object' && item.id && item.cacheName && item.basemapName && item.urlTemplate)
+    .map((item) => ({
+      id: item.id,
+      displayName: item.displayName || item.basemapName || 'Offline Cache',
+      cacheName: item.cacheName,
+      basemapName: item.basemapName,
+      urlTemplate: item.urlTemplate,
+      createdAt: item.createdAt || new Date().toISOString(),
+      zoomStart: Number(item.zoomStart) || 0,
+      zoomEnd: Number(item.zoomEnd) || 0,
+      depth: Number(item.depth) || 0,
+      tileCount: Number(item.tileCount) || 0,
+      bytes: Number(item.bytes) || 0,
+      avgTileBytes: Number(item.avgTileBytes) || 45000,
+      subdomain: item.subdomain || 'a',
+      bounds: item.bounds || null,
+      enabled: Boolean(item.enabled)
+    }));
+}
+
+function saveOfflineCacheMeta() {
+  localStorage.setItem(STORAGE_KEYS.mapCaches, JSON.stringify(offlineCacheMeta));
+}
+
+function setSelectedOfflineCache(cacheId) {
+  selectedOfflineCacheId = cacheId || '';
+  if (selectedOfflineCacheId) localStorage.setItem(STORAGE_KEYS.selectedMapCacheId, selectedOfflineCacheId);
+  else localStorage.removeItem(STORAGE_KEYS.selectedMapCacheId);
+  if (selectedOfflineBasemap) selectedOfflineBasemap.redraw();
+  updateOfflineBasemapControlLabel();
+}
+
+function zoomToOfflineCacheExtent(cacheId) {
+  const record = offlineCacheMeta.find((item) => item.id === cacheId);
+  if (!record?.bounds || !Array.isArray(record.bounds) || record.bounds.length !== 2) return;
+  const sw = record.bounds[0];
+  const ne = record.bounds[1];
+  if (!Array.isArray(sw) || !Array.isArray(ne) || sw.length !== 2 || ne.length !== 2) return;
+  const bounds = L.latLngBounds([sw[0], sw[1]], [ne[0], ne[1]]);
+  map.fitBounds(bounds, { padding: [20, 20] });
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const decimals = value >= 100 || unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(decimals)} ${units[unitIndex]}`;
+}
+
+function buildTileUrlFromTemplate(urlTemplate, coords, subdomain = 'a') {
+  return L.Util.template(urlTemplate, {
+    s: subdomain,
+    x: coords.x,
+    y: coords.y,
+    z: coords.z,
+    r: ''
+  });
+}
+
+function tileSubdomainForBasemap(layer) {
+  const subdomains = layer?.options?.subdomains;
+  if (Array.isArray(subdomains) && subdomains.length) return String(subdomains[0]);
+  if (typeof subdomains === 'string' && subdomains.length) return subdomains[0];
+  return 'a';
+}
+
+function lngToTileX(lng, zoom) {
+  return Math.floor(((lng + 180) / 360) * (2 ** zoom));
+}
+
+function latToTileY(lat, zoom) {
+  const latRad = (lat * Math.PI) / 180;
+  return Math.floor(((1 - Math.log(Math.tan(latRad) + (1 / Math.cos(latRad))) / Math.PI) / 2) * (2 ** zoom));
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function tileRangeForBounds(bounds, zoom) {
+  const maxIndex = (2 ** zoom) - 1;
+  const west = bounds.getWest();
+  const east = bounds.getEast();
+  const north = bounds.getNorth();
+  const south = bounds.getSouth();
+
+  let xMin = clamp(lngToTileX(west, zoom), 0, maxIndex);
+  let xMax = clamp(lngToTileX(east, zoom), 0, maxIndex);
+  let yMin = clamp(latToTileY(north, zoom), 0, maxIndex);
+  let yMax = clamp(latToTileY(south, zoom), 0, maxIndex);
+
+  if (xMax < xMin) {
+    const temp = xMin;
+    xMin = xMax;
+    xMax = temp;
+  }
+  if (yMax < yMin) {
+    const temp = yMin;
+    yMin = yMax;
+    yMax = temp;
+  }
+  return { xMin, xMax, yMin, yMax };
+}
+
+function tileCountForExtent(bounds, minZoom, maxZoom) {
+  let total = 0;
+  for (let zoom = minZoom; zoom <= maxZoom; zoom += 1) {
+    const range = tileRangeForBounds(bounds, zoom);
+    total += (range.xMax - range.xMin + 1) * (range.yMax - range.yMin + 1);
+  }
+  return total;
+}
+
+function getCurrentBasemapLayer() {
+  return basemaps[activeOnlineBasemap] || null;
+}
+
+function getCurrentBasemapTemplate() {
+  const layer = getCurrentBasemapLayer();
+  return layer?._url || '';
+}
+
+function averageTileSizeEstimate(basemapName) {
+  const values = offlineCacheMeta
+    .filter((item) => item.basemapName === basemapName && item.avgTileBytes > 0)
+    .map((item) => item.avgTileBytes);
+  if (!values.length) return 45000;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function cacheEstimateState() {
+  const depth = Math.max(0, Number(offlineCacheDepthInput?.value) || 0);
+  const zoomStart = Math.round(map.getZoom());
+  const zoomEnd = zoomStart + depth;
+  const tileCount = tileCountForExtent(map.getBounds(), zoomStart, zoomEnd);
+  const avgBytes = averageTileSizeEstimate(activeOnlineBasemap);
+  const estBytes = tileCount * avgBytes;
+  return { depth, zoomStart, zoomEnd, tileCount, avgBytes, estBytes };
+}
+
+function updateOfflineCacheEstimate() {
+  if (!offlineCacheEstimateEl) return;
+  const state = cacheEstimateState();
+  offlineCacheEstimateEl.textContent = `Estimated cache size: ${formatBytes(state.estBytes)} (${state.tileCount.toLocaleString()} tiles across z${state.zoomStart}-z${state.zoomEnd})`;
+}
+
+function updateOfflineCacheEstimateSoon() {
+  if (offlineCacheEstimateRaf) cancelAnimationFrame(offlineCacheEstimateRaf);
+  offlineCacheEstimateRaf = requestAnimationFrame(() => {
+    offlineCacheEstimateRaf = null;
+    updateOfflineCacheEstimate();
+  });
+}
+
+const OfflineCacheTileLayer = L.GridLayer.extend({
+  initialize(cacheRecord) {
+    this.cacheRecord = cacheRecord;
+    this.cacheSubdomain = cacheRecord.subdomain || 'a';
+    L.GridLayer.prototype.initialize.call(this, {
+      tileSize: 256,
+      minZoom: cacheRecord.zoomStart,
+      maxZoom: cacheRecord.zoomEnd,
+      noWrap: false,
+      updateWhenIdle: true
+    });
+  },
+  createTile(coords, done) {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.setAttribute('role', 'presentation');
+    if (!('caches' in window)) {
+      img.src = BLANK_TILE_DATA_URI;
+      done(null, img);
+      return img;
+    }
+    const url = buildTileUrlFromTemplate(this.cacheRecord.urlTemplate, coords, this.cacheSubdomain);
+    caches.open(this.cacheRecord.cacheName)
+      .then((cache) => cache.match(url))
+      .then((response) => (response ? response.blob() : null))
+      .then((blob) => {
+        if (!blob) {
+          img.src = BLANK_TILE_DATA_URI;
+          done(null, img);
+          return;
+        }
+        const objectUrl = URL.createObjectURL(blob);
+        img.onload = () => {
+          URL.revokeObjectURL(objectUrl);
+          done(null, img);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          img.src = BLANK_TILE_DATA_URI;
+          done(null, img);
+        };
+        img.src = objectUrl;
+      })
+      .catch(() => {
+        img.src = BLANK_TILE_DATA_URI;
+        done(null, img);
+      });
+    return img;
+  }
+});
+
+function enableOfflineCache(cacheId) {
+  const record = offlineCacheMeta.find((item) => item.id === cacheId);
+  if (!record) return;
+  if (activeOfflineCacheLayers.has(cacheId)) return;
+  const layer = new OfflineCacheTileLayer(record);
+  activeOfflineCacheLayers.set(cacheId, layer);
+  layer.addTo(map);
+}
+
+function disableOfflineCache(cacheId) {
+  const layer = activeOfflineCacheLayers.get(cacheId);
+  if (!layer) return;
+  map.removeLayer(layer);
+  activeOfflineCacheLayers.delete(cacheId);
+}
+
+function setOfflineCacheEnabled(cacheId, enabled) {
+  const record = offlineCacheMeta.find((item) => item.id === cacheId);
+  if (!record) return;
+  record.enabled = enabled;
+  if (enabled) enableOfflineCache(cacheId);
+  else disableOfflineCache(cacheId);
+  saveOfflineCacheMeta();
+}
+
+function renderOfflineCacheList() {
+  if (!offlineCacheListEl) return;
+  if (!offlineCacheMeta.length) {
+    offlineCacheListEl.innerHTML = '<div class="offline-cache-empty">No offline caches stored.</div>';
+    return;
+  }
+
+  offlineCacheListEl.innerHTML = offlineCacheMeta.map((record) => {
+    const created = new Date(record.createdAt);
+    const createdText = Number.isNaN(created.getTime()) ? '' : created.toLocaleString();
+    return `
+      <div class="offline-cache-card" data-cache-id="${record.id}">
+        <div class="offline-cache-head">
+          <span class="offline-cache-name">${escapeHtml(record.displayName || record.basemapName)}</span>
+          <button type="button" class="offline-cache-delete-btn" data-cache-action="delete" data-cache-id="${record.id}" title="Delete cache" aria-label="Delete cache"><i data-lucide="trash-2"></i></button>
+        </div>
+        <label class="offline-cache-basemap-pick">
+          <input type="radio" name="offline-basemap-selected" data-cache-action="select-basemap" data-cache-id="${record.id}"${selectedOfflineCacheId === record.id ? ' checked' : ''} />
+          <span>Use in basemap selector</span>
+        </label>
+        <div class="offline-cache-meta">Basemap: ${escapeHtml(record.basemapName)}</div>
+        <div class="offline-cache-meta">Extent z${record.zoomStart}-z${record.zoomEnd} | ${record.tileCount.toLocaleString()} tiles</div>
+        <div class="offline-cache-meta">Storage used: ${formatBytes(record.bytes)} | Built: ${escapeHtml(createdText)}</div>
+        <button type="button" data-cache-action="zoom-to" data-cache-id="${record.id}"><i data-lucide="focus"></i><span>Zoom to Cache Extent</span></button>
+      </div>
+    `;
+  }).join('');
+  initializeIcons();
+}
+
+async function rebuildOfflineCacheList() {
+  if (!('caches' in window)) {
+    if (offlineCacheEstimateEl) offlineCacheEstimateEl.textContent = 'Offline cache is not supported in this browser.';
+    renderOfflineCacheList();
+    return;
+  }
+  const metas = normalizeMapCacheMeta(offlineCacheMeta);
+  offlineCacheMeta.length = 0;
+  metas.forEach((item) => offlineCacheMeta.push(item));
+  if (selectedOfflineCacheId && !offlineCacheMeta.some((item) => item.id === selectedOfflineCacheId)) {
+    setSelectedOfflineCache('');
+  }
+
+  for (const record of offlineCacheMeta) {
+    disableOfflineCache(record.id);
+  }
+  saveOfflineCacheMeta();
+  renderOfflineCacheList();
+  updateOfflineBasemapControlLabel();
+  updateOfflineCacheEstimate();
+}
+
+async function deleteOfflineCache(cacheId) {
+  const index = offlineCacheMeta.findIndex((item) => item.id === cacheId);
+  if (index < 0) return;
+  const [record] = offlineCacheMeta.splice(index, 1);
+  if (selectedOfflineCacheId === record.id) setSelectedOfflineCache('');
+  disableOfflineCache(record.id);
+  try {
+    if ('caches' in window) await caches.delete(record.cacheName);
+  } catch {
+    // ignore
+  }
+  saveOfflineCacheMeta();
+  renderOfflineCacheList();
+  updateOfflineCacheEstimate();
+}
+
+async function buildOfflineCache() {
+  if (!('caches' in window)) {
+    alert('Offline cache is not supported in this browser.');
+    return;
+  }
+  const basemapLayer = getCurrentBasemapLayer();
+  const urlTemplate = getCurrentBasemapTemplate();
+  if (!basemapLayer || !urlTemplate) {
+    alert('Unable to determine active basemap for caching.');
+    return;
+  }
+
+  const state = cacheEstimateState();
+  const defaultCacheName = `${activeOnlineBasemap} ${buildIdentifier(new Date())}`;
+  const chosenName = prompt('Enter a name for this cache:', defaultCacheName);
+  if (chosenName === null) return;
+  const cacheLabel = String(chosenName || '').trim();
+  if (!cacheLabel) {
+    alert('Cache name is required.');
+    return;
+  }
+  const proceed = confirm(
+    `Build offline cache for "${activeOnlineBasemap}"?\n\n`
+    + `Cache name: ${cacheLabel}\n`
+    + `Zoom range: z${state.zoomStart} to z${state.zoomEnd}\n`
+    + `Estimated size: ${formatBytes(state.estBytes)}\n`
+    + `Estimated tiles: ${state.tileCount.toLocaleString()}`
+  );
+  if (!proceed) return;
+
+  if (buildOfflineCacheBtn) buildOfflineCacheBtn.disabled = true;
+  if (offlineCacheEstimateEl) offlineCacheEstimateEl.textContent = 'Building cache...';
+
+  const cacheId = newId();
+  const cacheName = `lfm_tile_cache_${cacheId}`;
+  const cache = await caches.open(cacheName);
+  const subdomain = tileSubdomainForBasemap(basemapLayer);
+  const depth = state.depth;
+  const zoomStart = state.zoomStart;
+  const zoomEnd = state.zoomEnd;
+  const bounds = map.getBounds();
+  const boundsRecord = [[bounds.getSouth(), bounds.getWest()], [bounds.getNorth(), bounds.getEast()]];
+
+  let fetchedTiles = 0;
+  let totalBytes = 0;
+
+  try {
+    for (let zoom = zoomStart; zoom <= zoomEnd; zoom += 1) {
+      const range = tileRangeForBounds(bounds, zoom);
+      for (let x = range.xMin; x <= range.xMax; x += 1) {
+        for (let y = range.yMin; y <= range.yMax; y += 1) {
+          const coords = { z: zoom, x, y };
+          const tileUrl = buildTileUrlFromTemplate(urlTemplate, coords, subdomain);
+          try {
+            const response = await fetch(tileUrl, { mode: 'cors' });
+            if (!response.ok) continue;
+            const blob = await response.blob();
+            if (!blob || !blob.size) continue;
+            totalBytes += blob.size;
+            fetchedTiles += 1;
+            await cache.put(tileUrl, new Response(blob, { status: 200, statusText: 'OK' }));
+          } catch {
+            // skip tile fetch failures silently
+          }
+        }
+      }
+    }
+
+    if (!fetchedTiles) {
+      await caches.delete(cacheName);
+      alert('No tiles were cached. This may be due to network errors or provider restrictions.');
+      return;
+    }
+
+    const avgTileBytes = totalBytes / fetchedTiles;
+    const record = {
+      id: cacheId,
+      displayName: cacheLabel,
+      cacheName,
+      basemapName: activeOnlineBasemap,
+      urlTemplate,
+      subdomain,
+      createdAt: new Date().toISOString(),
+      zoomStart,
+      zoomEnd,
+      depth,
+      tileCount: fetchedTiles,
+      bytes: totalBytes,
+      avgTileBytes,
+      bounds: boundsRecord,
+      enabled: false
+    };
+    offlineCacheMeta.push(record);
+    setSelectedOfflineCache(record.id);
+    saveOfflineCacheMeta();
+    renderOfflineCacheList();
+    updateOfflineCacheEstimate();
+  } finally {
+    if (buildOfflineCacheBtn) buildOfflineCacheBtn.disabled = false;
+  }
+}
+
+function normalizeGeoType(type) {
+  if (type === 'Point' || type === 'MultiPoint') return 'Point';
+  if (type === 'LineString' || type === 'MultiLineString') return 'LineString';
+  if (type === 'Polygon' || type === 'MultiPolygon') return 'Polygon';
+  return '';
+}
+
+function importedLayerGeometryType(layer) {
+  if (layer instanceof L.CircleMarker || layer instanceof L.Marker) return 'Point';
+  if (layer instanceof L.Polygon && !(layer instanceof L.Rectangle)) return 'Polygon';
+  if (layer instanceof L.Polyline) return 'LineString';
+  return '';
+}
+
+function collectOverlayFieldNames(featureCollection) {
+  const fields = new Set();
+  (featureCollection.features || []).forEach((feature) => {
+    const props = feature?.properties;
+    if (!props || typeof props !== 'object') return;
+    Object.keys(props).forEach((key) => fields.add(key));
+  });
+  return Array.from(fields).sort((a, b) => a.localeCompare(b));
+}
+
+function collectOverlayGeometryTypes(featureCollection) {
+  const types = new Set();
+  (featureCollection.features || []).forEach((feature) => {
+    const gType = normalizeGeoType(feature?.geometry?.type || '');
+    if (gType) types.add(gType);
+  });
+  return {
+    Point: types.has('Point'),
+    LineString: types.has('LineString'),
+    Polygon: types.has('Polygon')
+  };
+}
+
+function overlayLabelValue(record, layer) {
+  if (!record.labelField) return '';
+  const value = layer.feature?.properties?.[record.labelField];
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
+function applyImportedOverlayLayerStyle(record, layer) {
+  const geometryType = importedLayerGeometryType(layer);
+  const geometryStyle = record.style[geometryType];
+  if (!geometryType || !geometryStyle) return;
+  if (geometryType === 'Point') {
+    layer.setStyle({
+      color: geometryStyle.stroke,
+      weight: geometryStyle.visible ? Number(geometryStyle.strokeWidth) : 0,
+      fillColor: geometryStyle.color,
+      radius: geometryStyle.visible ? Number(geometryStyle.size) : 0,
+      opacity: geometryStyle.visible ? 1 : 0,
+      fillOpacity: geometryStyle.visible ? 1 : 0
+    });
+  } else if (geometryType === 'LineString') {
+    layer.setStyle({
+      color: geometryStyle.color,
+      weight: Number(geometryStyle.size),
+      opacity: geometryStyle.visible ? 1 : 0
+    });
+  } else if (geometryType === 'Polygon') {
+    layer.setStyle({
+      color: geometryStyle.color,
+      weight: Number(geometryStyle.size),
+      opacity: geometryStyle.visible ? 1 : 0,
+      fillColor: '#000000',
+      fillOpacity: 0
+    });
+  }
+
+  const labelValue = overlayLabelValue(record, layer);
+  if (!geometryStyle.visible || !labelValue) {
+    if (layer.getTooltip()) layer.unbindTooltip();
+    return;
+  }
+  layer.bindTooltip(labelValue, {
+    permanent: true,
+    className: 'import-overlay-label',
+    direction: geometryType === 'Point' ? 'top' : 'center'
+  });
+}
+
+function applyImportedOverlayStyle(record) {
+  record.layerGroup.eachLayer((layer) => applyImportedOverlayLayerStyle(record, layer));
+}
+
+function updateImportedOverlayControlStates(cardEl, record) {
+  ['Point', 'LineString', 'Polygon'].forEach((geometryType) => {
+    const present = Boolean(record.geometryTypes[geometryType]);
+    const row = cardEl.querySelector(`[data-geometry-row="${geometryType}"]`);
+    if (!row) return;
+    row.classList.toggle('disabled', !present);
+    row.querySelectorAll('input').forEach((input) => {
+      input.disabled = !present;
+    });
+  });
+}
+
+function renderImportedOverlaysPanel() {
+  if (!importedOverlaysEl) return;
+  if (!importedOverlayRecords.length) {
+    importedOverlaysEl.innerHTML = '<div class="imported-empty">No imported overlays loaded.</div>';
+    return;
+  }
+
+  importedOverlaysEl.innerHTML = importedOverlayRecords.map((record) => {
+    const fieldOptions = ['<option value="">No labels</option>']
+      .concat(record.fields.map((field) => `<option value="${escapeHtml(field)}"${record.labelField === field ? ' selected' : ''}>${escapeHtml(field)}</option>`))
+      .join('');
+    return `
+      <div class="imported-overlay-card" data-overlay-id="${record.id}">
+        <div class="imported-overlay-head">
+          <span class="imported-overlay-name">${escapeHtml(record.name)}</span>
+          <button type="button" class="overlay-remove-btn" data-overlay-action="remove" data-overlay-id="${record.id}">Remove</button>
+        </div>
+        <div class="imported-overlay-grid overlay-grid-header">
+          <span>Geometry</span><span>On/Off</span><span>Color</span><span>Size</span>
+        </div>
+        <div class="imported-overlay-grid" data-geometry-row="Point">
+          <span>Point</span>
+          <input type="checkbox" data-overlay-action="visible" data-overlay-id="${record.id}" data-geometry="Point"${record.style.Point.visible ? ' checked' : ''} />
+          <input type="color" data-overlay-action="color" data-overlay-id="${record.id}" data-geometry="Point" value="${record.style.Point.color}" />
+          <input type="number" min="1" max="30" data-overlay-action="size" data-overlay-id="${record.id}" data-geometry="Point" value="${record.style.Point.size}" />
+        </div>
+        <div class="imported-overlay-grid" data-geometry-row="LineString">
+          <span>Line</span>
+          <input type="checkbox" data-overlay-action="visible" data-overlay-id="${record.id}" data-geometry="LineString"${record.style.LineString.visible ? ' checked' : ''} />
+          <input type="color" data-overlay-action="color" data-overlay-id="${record.id}" data-geometry="LineString" value="${record.style.LineString.color}" />
+          <input type="number" min="1" max="30" data-overlay-action="size" data-overlay-id="${record.id}" data-geometry="LineString" value="${record.style.LineString.size}" />
+        </div>
+        <div class="imported-overlay-grid" data-geometry-row="Polygon">
+          <span>Polygon</span>
+          <input type="checkbox" data-overlay-action="visible" data-overlay-id="${record.id}" data-geometry="Polygon"${record.style.Polygon.visible ? ' checked' : ''} />
+          <input type="color" data-overlay-action="color" data-overlay-id="${record.id}" data-geometry="Polygon" value="${record.style.Polygon.color}" />
+          <input type="number" min="1" max="30" data-overlay-action="size" data-overlay-id="${record.id}" data-geometry="Polygon" value="${record.style.Polygon.size}" />
+        </div>
+        <label class="overlay-label-field">Label Field
+          <select data-overlay-action="label-field" data-overlay-id="${record.id}">
+            ${fieldOptions}
+          </select>
+        </label>
+      </div>
+    `;
+  }).join('');
+
+  importedOverlayRecords.forEach((record) => {
+    const cardEl = importedOverlaysEl.querySelector(`[data-overlay-id="${record.id}"]`);
+    if (!cardEl) return;
+    updateImportedOverlayControlStates(cardEl, record);
+  });
+}
+
+function createImportedOverlayRecord(fileName, featureCollection) {
+  const layerGroup = L.geoJSON(featureCollection, {
+    pointToLayer: (_feature, latlng) => L.circleMarker(latlng)
+  });
+  const record = {
+    id: newId(),
+    name: fileName,
+    fields: collectOverlayFieldNames(featureCollection),
+    labelField: '',
+    geometryTypes: collectOverlayGeometryTypes(featureCollection),
+    layerGroup,
+    style: {
+      Point: { ...IMPORTED_DEFAULT_STYLE.Point },
+      LineString: { ...IMPORTED_DEFAULT_STYLE.LineString },
+      Polygon: { ...IMPORTED_DEFAULT_STYLE.Polygon }
+    }
+  };
+  record.layerGroup.addTo(map);
+  applyImportedOverlayStyle(record);
+  importedOverlayRecords.push(record);
+  renderImportedOverlaysPanel();
+}
+
+function findImportedOverlayRecord(id) {
+  return importedOverlayRecords.find((item) => item.id === id) || null;
+}
+
+function removeImportedOverlay(id) {
+  const index = importedOverlayRecords.findIndex((item) => item.id === id);
+  if (index < 0) return;
+  const [record] = importedOverlayRecords.splice(index, 1);
+  map.removeLayer(record.layerGroup);
+  renderImportedOverlaysPanel();
 }
   
   const toolsPanel = document.getElementById('tools-panel');
@@ -762,11 +1498,12 @@ const drawnItems = new L.FeatureGroup().addTo(map);
   }
   
   const drawControl = new L.Control.Draw({
-    position: 'topleft',
+    position: 'topcenter',
     draw: { rectangle: false, circle: false, circlemarker: false, marker: true, polyline: true, polygon: true },
     edit: { featureGroup: drawnItems }
   });
   map.addControl(drawControl);
+  drawControl.getContainer()?.classList.add('sketch-draw-toolbar');
   
   function applyStyle(layer) {
     const type = getGeometryType(layer);
@@ -1143,6 +1880,85 @@ function wireTypePresetInputs() {
   });
 }
 
+if (importedOverlaysEl) {
+  importedOverlaysEl.addEventListener('input', (event) => {
+    const target = event.target;
+    const action = target?.dataset?.overlayAction;
+    const overlayId = target?.dataset?.overlayId;
+    if (!action || !overlayId) return;
+    const record = findImportedOverlayRecord(overlayId);
+    if (!record) return;
+
+    if (action === 'visible' || action === 'color' || action === 'size') {
+      const geometryType = target.dataset.geometry;
+      if (!geometryType || !record.style[geometryType]) return;
+      if (action === 'visible') record.style[geometryType].visible = Boolean(target.checked);
+      if (action === 'color') record.style[geometryType].color = target.value;
+      if (action === 'size') record.style[geometryType].size = Number(target.value) || record.style[geometryType].size;
+      applyImportedOverlayStyle(record);
+      return;
+    }
+
+    if (action === 'label-field') {
+      record.labelField = target.value || '';
+      applyImportedOverlayStyle(record);
+    }
+  });
+
+  importedOverlaysEl.addEventListener('click', (event) => {
+    const target = event.target;
+    const action = target?.dataset?.overlayAction;
+    const overlayId = target?.dataset?.overlayId;
+    if (action !== 'remove' || !overlayId) return;
+    removeImportedOverlay(overlayId);
+  });
+}
+
+if (offlineCacheDepthInput) {
+  offlineCacheDepthInput.addEventListener('input', () => {
+    const sanitized = Math.max(0, Math.min(8, Number(offlineCacheDepthInput.value) || 0));
+    offlineCacheDepthInput.value = String(Math.round(sanitized));
+    updateOfflineCacheEstimateSoon();
+  });
+}
+
+if (buildOfflineCacheBtn) {
+  buildOfflineCacheBtn.addEventListener('click', async () => {
+    await buildOfflineCache();
+  });
+}
+
+if (offlineCacheListEl) {
+  offlineCacheListEl.addEventListener('change', (event) => {
+    const target = event.target;
+    const action = target?.dataset?.cacheAction;
+    if (action === 'select-basemap') {
+      const cacheId = target.dataset.cacheId;
+      if (!cacheId) return;
+      setSelectedOfflineCache(cacheId);
+      renderOfflineCacheList();
+      return;
+    }
+    return;
+  });
+
+  offlineCacheListEl.addEventListener('click', async (event) => {
+    const target = event.target?.closest?.('[data-cache-action]');
+    const action = target?.dataset?.cacheAction;
+    if (!action) return;
+    const cacheId = target.dataset.cacheId;
+    if (!cacheId) return;
+    if (action === 'delete') {
+      if (!confirm('Delete this offline cache from local storage?')) return;
+      await deleteOfflineCache(cacheId);
+      return;
+    }
+    if (action === 'zoom-to') {
+      zoomToOfflineCacheExtent(cacheId);
+    }
+  });
+}
+
   document.getElementById('download-geojson').addEventListener('click', () => {
     const fc = featureCollectionFromMap();
     const blob = new Blob([JSON.stringify(fc, null, 2)], { type: 'application/geo+json' });
@@ -1159,13 +1975,8 @@ function wireTypePresetInputs() {
     let json;
     try { json = JSON.parse(await file.text()); } catch { alert('Invalid JSON file.'); e.target.value = ''; return; }
     if (!isFeatureCollection(json)) { alert('Invalid GeoJSON: expected FeatureCollection.'); e.target.value = ''; return; }
-  
-    if (document.getElementById('import-mode').value === 'replace') drawnItems.clearLayers();
-    json.features.forEach((feature) => {
-      if (feature?.type !== 'Feature' || !feature.geometry?.type) return;
-      addFeatureToMap(feature);
-    });
-    saveFeatures();
+
+    createImportedOverlayRecord(file.name || `overlay-${buildIdentifier(new Date())}.geojson`, json);
     e.target.value = '';
   });
 
@@ -1618,13 +2429,14 @@ map.on('move zoom', () => {
   updateCoordinateHud(map.getCenter());
 });
 map.on('moveend zoomend', () => {
-  if (!utmGridActive) return;
-  renderUtmGrid();
+  if (utmGridActive) renderUtmGrid();
+  updateOfflineCacheEstimateSoon();
 });
 
-async function setWakeLock(enabled) {
+async function setWakeLock(enabled, options = {}) {
+  const silent = Boolean(options.silent);
   if (!('wakeLock' in navigator)) {
-    alert('Screen Wake Lock is not supported on this device/browser.');
+    if (!silent) alert('Screen Wake Lock is not supported on this device/browser.');
     wakeLockRequested = false;
     wakeLockBtn?.classList.remove('active');
     return;
@@ -1654,7 +2466,7 @@ async function setWakeLock(enabled) {
     wakeLockRequested = false;
     wakeLockBtn?.classList.remove('active');
     wakeLockBtn.innerHTML = '<i data-lucide="moon-star"></i>';
-    alert(`Wake lock unavailable: ${error.message}`);
+    if (!silent) alert(`Wake lock unavailable: ${error.message}`);
   }
   initializeIcons();
 }
@@ -1700,7 +2512,11 @@ copyCoordsBtn.addEventListener('click', async () => {
 wireStyleInputs();
 wireSurveyMetadataInputs();
 wireTypePresetInputs();
+renderImportedOverlaysPanel();
+rebuildOfflineCacheList();
 loadFeatures();
+startGps();
+setWakeLock(true, { silent: true });
 updateStatus();
 updateCoordinateHud(map.getCenter());
 initializeIcons();
