@@ -34,6 +34,61 @@ body {
   backdrop-filter: blur(8px);
 }
 
+.app-subheader {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.app-subheader-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.subheader-tools-btn,
+.subheader-icon-btn {
+  width: 38px;
+  height: 30px;
+  min-width: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.subheader-tools-btn i[data-lucide],
+.subheader-icon-btn i[data-lucide] {
+  width: 20px;
+  height: 20px;
+}
+
+.subheader-tools-btn:hover,
+.subheader-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.subheader-icon-btn.active {
+  background: rgba(132, 198, 172, 0.42);
+  border-color: rgba(147, 226, 192, 0.9);
+}
+
+.app-subheader .gps-accuracy-overlay {
+  min-width: 76px;
+  height: 30px;
+  font-size: 14px;
+  padding: 0 8px;
+  border-radius: 8px;
+}
+
 .app-logo {
   height: 30px;
   width: auto;
@@ -58,13 +113,13 @@ body {
 }
 
 #map {
-  height: calc(100% - 68px);
+  height: calc(100% - 106px);
   position: relative;
 }
 
 .tools-panel {
   position: absolute;
-  top: 66px;
+  top: 104px;
   left: clamp(8px, 5vw, 56px);
   right: 8px;
   z-index: 1000;
@@ -328,7 +383,7 @@ body {
 
 .https-warning {
   position: absolute;
-  top: 62px;
+  top: 100px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1200;
@@ -493,54 +548,6 @@ body {
   pointer-events: none;
 }
 
-.leaflet-topline,
-.leaflet-secondline,
-.leaflet-thirdline {
-  left: auto;
-  right: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.leaflet-topline {
-  top: 10px;
-}
-
-.leaflet-secondline {
-  top: 62px;
-}
-
-.leaflet-thirdline {
-  top: 114px;
-}
-
-.leaflet-topline .leaflet-control,
-.leaflet-secondline .leaflet-control,
-.leaflet-thirdline .leaflet-control {
-  clear: none;
-  margin: 0;
-}
-
-.leaflet-topline .map-type-preset-wrap {
-  order: 1;
-}
-
-.leaflet-topline .map-utility-controls {
-  order: 2;
-}
-
-.leaflet-secondline .sketch-draw-toolbar {
-  order: 1;
-  margin-right: 16px;
-}
-
-.leaflet-secondline .gps-accuracy-overlay {
-  order: 2;
-  margin-left: 8px;
-}
-
 .map-type-preset-wrap {
   margin: 0;
   background: color-mix(in srgb, var(--surface) 96%, transparent);
@@ -552,29 +559,25 @@ body {
 
 .map-type-preset-select {
   min-width: 168px;
-  height: 44px;
+  height: 32px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-soft);
   color: var(--text);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   padding: 4px 8px;
 }
 
 .sketch-draw-toolbar {
-  margin-top: 0;
-  transform: scale(1.18);
+  margin-top: 120px;
+  transform: none;
   transform-origin: top left;
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: flex-start;
-  gap: 8px;
+  display: block !important;
 }
 
 .sketch-draw-toolbar.leaflet-control-draw {
-  display: flex !important;
-  flex-direction: row !important;
+  display: block !important;
 }
 
 .sketch-draw-toolbar .leaflet-draw-section {
@@ -584,8 +587,7 @@ body {
 }
 
 .sketch-draw-toolbar .leaflet-draw-toolbar {
-  display: flex;
-  flex-direction: row;
+  display: block;
   margin: 0 !important;
 }
 
@@ -599,12 +601,27 @@ body {
 
 .sketch-draw-toolbar .leaflet-bar a:first-child {
   border-top-left-radius: 10px;
-  border-bottom-left-radius: 10px;
+  border-top-right-radius: 10px;
+  border-bottom-left-radius: 0;
 }
 
 .sketch-draw-toolbar .leaflet-bar a:last-child {
-  border-top-right-radius: 10px;
+  border-top-right-radius: 0;
   border-bottom-right-radius: 10px;
+  border-bottom-left-radius: 10px;
+}
+
+.leaflet-top.leaflet-right .sketch-draw-toolbar {
+  margin-left: auto;
+}
+
+.leaflet-bottom.leaflet-left .map-type-preset-wrap {
+  margin-left: 10px;
+  margin-bottom: 10px;
+}
+
+.leaflet-bottom.leaflet-left .map-type-preset-select {
+  min-width: 156px;
 }
 
 .gps-accuracy-good {
@@ -673,7 +690,7 @@ body {
 .preset-empty {
   font-size: 12px;
   color: var(--muted);
-  padding: 8px 6px;
+  padding: 2px 2px;
 }
 
 .line-attr-popover input,
@@ -939,18 +956,29 @@ i[data-lucide].icon-fallback {
     padding: 0 8px;
   }
 
+  .app-subheader {
+    height: 34px;
+    padding: 0 8px;
+  }
+
+  .subheader-tools-btn {
+    width: 36px;
+    height: 28px;
+    min-width: 36px;
+  }
+
   .app-logo {
     height: 26px;
   }
 
   #map {
-    height: calc(100% - 62px);
+    height: calc(100% - 96px);
   }
 
   .tools-panel {
     left: 8px;
     right: 8px;
-    top: 58px;
+    top: 92px;
     width: auto;
     max-width: calc(100dvw - 16px);
     max-height: calc(100vh - 116px);
