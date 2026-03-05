@@ -3,7 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1f2d3a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Field Mapper" />
     <title>Leaflet Field Mapper</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon-192.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon-192.svg" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -28,7 +35,7 @@
           src="https://static.wixstatic.com/media/7e7d52_71c1430e410040a5936a82003b184f41~mv2.jpg/v1/fill/w_744,h_186,al_c,q_80,usm_0.66_1.00_0.01,enc_avif,quality_auto/LOGO%20TEXT%20c2%20white%20green.jpg"
           alt="Logo"
         />
-        <div id="app-title" class="app-title">Field Mapper</div>
+        <div id="app-title" class="app-title">Field Mapper 20260304-1743</div>
       </div>
       <div class="app-header-right">
         <button id="copy-coords" class="header-icon-btn" type="button" aria-label="Copy coordinates" title="Copy coordinates">
@@ -40,6 +47,32 @@
         </div>
       </div>
     </header>
+
+    <div class="app-subheader">
+      <button id="tools-header-btn" class="subheader-tools-btn" type="button" aria-label="Toggle tools menu" title="Toggle tools">
+        <i data-lucide="sliders-horizontal"></i>
+      </button>
+      <div class="app-subheader-right">
+        <button id="locate-header-btn" class="subheader-icon-btn" type="button" aria-label="Center on current location" title="Center on current location">
+          <i data-lucide="locate-fixed"></i>
+        </button>
+        <button id="crosshair-header-btn" class="subheader-icon-btn" type="button" aria-label="Toggle center crosshair" title="Toggle center crosshair">
+          <i data-lucide="crosshair"></i>
+        </button>
+        <button id="wake-lock-btn" class="subheader-icon-btn" type="button" aria-label="Toggle screen wake lock" title="Prevent screen sleep">
+          <i data-lucide="moon-star"></i>
+        </button>
+        <button id="fullscreen-btn" class="subheader-icon-btn" type="button" aria-label="Toggle fullscreen mode" title="Toggle fullscreen">
+          <i data-lucide="maximize"></i>
+        </button>
+        <button id="utm-grid-btn" class="subheader-icon-btn" type="button" aria-label="Toggle UTM grid" title="Toggle UTM grid">
+          <i data-lucide="grid-3x3"></i>
+        </button>
+        <div id="gps-accuracy-badge" class="gps-accuracy-overlay gps-accuracy-na" title="Current GPS accuracy">
+          <span id="gps-accuracy-text">--</span>
+        </div>
+      </div>
+    </div>
 
     <div id="map">
       <div id="map-crosshair" class="map-crosshair hidden" aria-hidden="true"></div>
