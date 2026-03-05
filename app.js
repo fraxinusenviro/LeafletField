@@ -115,21 +115,9 @@ function ensureFeatureProperties(feature, sourceHint = 'sketch') {
   const map = L.map('map', {
     center: savedMap?.center || DEFAULTS.center,
     zoom: savedMap?.zoom || DEFAULTS.zoom,
+    zoomControl: false,
     maxZoom: 24
   });
-
-  if (!map._controlCorners.topline) {
-    const topLine = L.DomUtil.create('div', 'leaflet-top leaflet-topline', map._controlContainer);
-    map._controlCorners.topline = topLine;
-  }
-  if (!map._controlCorners.secondline) {
-    const secondLine = L.DomUtil.create('div', 'leaflet-top leaflet-secondline', map._controlContainer);
-    map._controlCorners.secondline = secondLine;
-  }
-  if (!map._controlCorners.thirdline) {
-    const thirdLine = L.DomUtil.create('div', 'leaflet-top leaflet-thirdline', map._controlContainer);
-    map._controlCorners.thirdline = thirdLine;
-  }
   
   if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
     document.getElementById('https-warning').classList.remove('hidden');
@@ -203,7 +191,8 @@ function ensureFeatureProperties(feature, sourceHint = 'sketch') {
   if (!basemaps[currentBasemap]) currentBasemap = DEFAULTS.basemap;
   let activeOnlineBasemap = currentBasemap === OFFLINE_BASEMAP_NAME ? DEFAULTS.basemap : currentBasemap;
   basemaps[currentBasemap].addTo(map);
-  const basemapControl = L.control.layers(basemaps, null, { position: 'thirdline' }).addTo(map);
+  L.control.zoom({ position: 'topright' }).addTo(map);
+  const basemapControl = L.control.layers(basemaps, null, { position: 'topright' }).addTo(map);
   L.control.scale({ position: 'bottomleft', imperial: false, metric: true, maxWidth: 140 }).addTo(map);
   function selectedOfflineCacheName() {
     const record = offlineCacheMeta.find((item) => item.id === selectedOfflineCacheId);
@@ -282,15 +271,17 @@ const offlineCacheDepthInput = document.getElementById('offline-cache-depth');
 const offlineCacheEstimateEl = document.getElementById('offline-cache-estimate');
 const buildOfflineCacheBtn = document.getElementById('build-offline-cache');
 const offlineCacheListEl = document.getElementById('offline-cache-list');
-const appTitleEl = document.getElementById('app-title');
-let wakeLockBtn = null;
-let fullscreenBtn = null;
+const locateHeaderBtn = document.getElementById('locate-header-btn');
+const crosshairHeaderBtn = document.getElementById('crosshair-header-btn');
+const wakeLockBtn = document.getElementById('wake-lock-btn');
+const fullscreenBtn = document.getElementById('fullscreen-btn');
+const utmGridBtn = document.getElementById('utm-grid-btn');
 const gpsFollowUserInput = document.getElementById('gps-follow-user');
 let crosshairActive = false;
 let latestCoordText = '';
 let utmGridActive = false;
-let gpsAccuracyOverlayEl = null;
-let gpsAccuracyTextEl = null;
+const gpsAccuracyOverlayEl = document.getElementById('gps-accuracy-badge');
+const gpsAccuracyTextEl = document.getElementById('gps-accuracy-text');
 let wakeLockSentinel = null;
 let wakeLockRequested = false;
 const utmGridLayer = L.layerGroup().addTo(map);
@@ -945,18 +936,10 @@ function removeImportedOverlay(id) {
   
   const toolsPanel = document.getElementById('tools-panel');
   const toolsCloseButton = document.getElementById('tools-close');
-  const ToolsControl = L.Control.extend({
-    onAdd() {
-      const button = L.DomUtil.create('button', 'tools-toggle-btn');
-      button.type = 'button';
-      button.innerHTML = '<i data-lucide="sliders-horizontal"></i>';
-      button.title = 'Toggle tools';
-      L.DomEvent.disableClickPropagation(button);
-      L.DomEvent.on(button, 'click', () => toolsPanel.classList.toggle('hidden'));
-      return button;
-    }
-  });
-new ToolsControl({ position: 'topleft' }).addTo(map);
+  const toolsHeaderButton = document.getElementById('tools-header-btn');
+if (toolsHeaderButton) {
+  toolsHeaderButton.addEventListener('click', () => toolsPanel.classList.toggle('hidden'));
+}
 if (toolsCloseButton) {
   toolsCloseButton.innerHTML = '<i data-lucide="x"></i>';
   toolsCloseButton.addEventListener('click', () => toolsPanel.classList.add('hidden'));
@@ -1001,102 +984,39 @@ const SelectFeatureControl = L.Control.extend({
 });
 new SelectFeatureControl({ position: 'topleft' }).addTo(map);
 
-const CrosshairControl = L.Control.extend({
-  onAdd() {
-    const button = L.DomUtil.create('button', 'crosshair-toggle-btn');
-    button.type = 'button';
-    button.innerHTML = '<i data-lucide="crosshair"></i>';
-    button.title = 'Toggle center crosshair';
-    L.DomEvent.disableClickPropagation(button);
-    L.DomEvent.on(button, 'click', () => {
-      crosshairActive = !crosshairActive;
-      button.classList.toggle('active', crosshairActive);
-      crosshairEl.classList.toggle('hidden', !crosshairActive);
-      if (crosshairActive) updateCoordinateHud(map.getCenter());
-    });
-    return button;
-  }
-});
-new CrosshairControl({ position: 'topleft' }).addTo(map);
+if (crosshairHeaderBtn) {
+  crosshairHeaderBtn.addEventListener('click', () => {
+    crosshairActive = !crosshairActive;
+    crosshairHeaderBtn.classList.toggle('active', crosshairActive);
+    crosshairEl.classList.toggle('hidden', !crosshairActive);
+    if (crosshairActive) updateCoordinateHud(map.getCenter());
+  });
+}
 
-const LocateControl = L.Control.extend({
-  onAdd() {
-    const button = L.DomUtil.create('button', 'locate-btn');
-    button.type = 'button';
-    button.innerHTML = '<i data-lucide="locate-fixed"></i>';
-    button.title = 'Center on current location';
-    L.DomEvent.disableClickPropagation(button);
-    L.DomEvent.on(button, 'click', () => {
-      if (!navigator.geolocation) {
-        alert('Geolocation is not supported by this browser.');
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const latlng = [position.coords.latitude, position.coords.longitude];
-          map.flyTo(latlng, Math.max(map.getZoom(), 17));
-        },
-        (error) => alert(`Unable to get location: ${error.message}`),
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
-      );
-    });
-    return button;
-  }
-});
-new LocateControl({ position: 'topleft' }).addTo(map);
+if (locateHeaderBtn) {
+  locateHeaderBtn.addEventListener('click', () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by this browser.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const latlng = [position.coords.latitude, position.coords.longitude];
+        map.flyTo(latlng, Math.max(map.getZoom(), 17));
+      },
+      (error) => alert(`Unable to get location: ${error.message}`),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+    );
+  });
+}
 
-const UtmGridControl = L.Control.extend({
-  onAdd() {
-    const button = L.DomUtil.create('button', 'grid-toggle-btn');
-    button.type = 'button';
-    button.innerHTML = '<i data-lucide="grid-3x3"></i>';
-    button.title = 'Toggle UTM grid';
-    L.DomEvent.disableClickPropagation(button);
-    L.DomEvent.on(button, 'click', () => {
-      utmGridActive = !utmGridActive;
-      button.classList.toggle('active', utmGridActive);
-      renderUtmGrid();
-    });
-    return button;
-  }
-});
-new UtmGridControl({ position: 'topleft' }).addTo(map);
-
-const MapUtilityControl = L.Control.extend({
-  onAdd() {
-    const wrap = L.DomUtil.create('div', 'map-utility-controls');
-
-    wakeLockBtn = L.DomUtil.create('button', 'header-icon-btn', wrap);
-    wakeLockBtn.type = 'button';
-    wakeLockBtn.setAttribute('aria-label', 'Toggle screen wake lock');
-    wakeLockBtn.title = 'Prevent screen sleep';
-    wakeLockBtn.innerHTML = '<i data-lucide="moon-star"></i>';
-
-    fullscreenBtn = L.DomUtil.create('button', 'header-icon-btn', wrap);
-    fullscreenBtn.type = 'button';
-    fullscreenBtn.setAttribute('aria-label', 'Toggle fullscreen mode');
-    fullscreenBtn.title = 'Toggle fullscreen';
-    fullscreenBtn.innerHTML = '<i data-lucide="maximize"></i>';
-
-    L.DomEvent.disableClickPropagation(wrap);
-    L.DomEvent.disableScrollPropagation(wrap);
-    return wrap;
-  }
-});
-new MapUtilityControl({ position: 'topline' }).addTo(map);
-
-const GpsAccuracyControl = L.Control.extend({
-  onAdd() {
-    const container = L.DomUtil.create('div', 'gps-accuracy-overlay gps-accuracy-na');
-    container.title = 'Current GPS accuracy';
-    container.innerHTML = '<span id="gps-accuracy-text">--</span>';
-    L.DomEvent.disableClickPropagation(container);
-    gpsAccuracyOverlayEl = container;
-    gpsAccuracyTextEl = container.querySelector('#gps-accuracy-text');
-    return container;
-  }
-});
-new GpsAccuracyControl({ position: 'secondline' }).addTo(map);
+if (utmGridBtn) {
+  utmGridBtn.addEventListener('click', () => {
+    utmGridActive = !utmGridActive;
+    utmGridBtn.classList.toggle('active', utmGridActive);
+    renderUtmGrid();
+  });
+}
 
 function setLineButtonsActive() {
   if (trackToolButton) trackToolButton.classList.toggle('active', gps.trackRec);
@@ -1493,10 +1413,10 @@ const drawnItems = new L.FeatureGroup().addTo(map);
       return wrap;
     }
   });
-  new TypePresetControl({ position: 'topline' }).addTo(map);
+  new TypePresetControl({ position: 'bottomleft' }).addTo(map);
   
   const drawControl = new L.Control.Draw({
-    position: 'secondline',
+    position: 'topleft',
     draw: { rectangle: false, circle: false, circlemarker: false, marker: true, polyline: true, polygon: true },
     edit: { featureGroup: drawnItems }
   });
@@ -2551,6 +2471,17 @@ copyCoordsBtn.addEventListener('click', async () => {
   }
 });
 
+function registerPwaServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  window.addEventListener('load', async () => {
+    try {
+      await navigator.serviceWorker.register('./service-worker.js');
+    } catch (error) {
+      console.warn('Service worker registration failed:', error);
+    }
+  });
+}
+
 wireStyleInputs();
 wireSurveyMetadataInputs();
 wireTypePresetInputs();
@@ -2563,7 +2494,7 @@ updateStatus();
 updateCoordinateHud(map.getCenter());
 initializeIcons();
 updateFullscreenButtonState();
-if (appTitleEl) appTitleEl.textContent = `Field Mapper ${buildIdentifier(new Date())}`;
+registerPwaServiceWorker();
 
 map.getContainer().addEventListener('touchmove', (e) => {
   if (document.body.classList.contains('leaflet-draw-draw-polyline') || document.body.classList.contains('leaflet-draw-draw-polygon')) {
