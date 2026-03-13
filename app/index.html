@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1f2d3a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Field Mapper" />
+    <title>Field Mapper</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon-192.svg" />
+  </head>
+  <body>
+    <div id="https-warning" class="https-warning hidden">
+      Geolocation may require HTTPS (or localhost) to work reliably.
+    </div>
+
+    <header class="app-header">
+      <div class="brand-stack">
+        <img
+          class="app-logo"
+          src="https://static.wixstatic.com/media/7e7d52_71c1430e410040a5936a82003b184f41~mv2.jpg/v1/fill/w_744,h_186,al_c,q_80,usm_0.66_1.00_0.01,enc_avif,quality_auto/LOGO%20TEXT%20c2%20white%20green.jpg"
+          alt="Logo"
+        />
+        <div class="app-title">Field Mapper v2</div>
+      </div>
+      <div class="app-header-right">
+        <button id="copy-coords" class="header-icon-btn" type="button" aria-label="Copy coordinates" title="Copy coordinates">
+          <i data-lucide="copy"></i>
+        </button>
+        <div class="header-info-stack">
+          <div id="coord-latlon">Lat/Lon: --</div>
+          <div id="coord-utm">UTM: --</div>
+        </div>
+      </div>
+    </header>
+
+    <div class="app-subheader">
+      <button id="tools-header-btn" class="subheader-tools-btn" type="button" aria-label="Toggle tools menu" title="Toggle tools">
+        <i data-lucide="sliders-horizontal"></i>
+      </button>
+      <div class="app-subheader-right">
+        <button id="locate-header-btn" class="subheader-icon-btn" type="button" aria-label="Center on current location" title="Center on current location">
+          <i data-lucide="locate-fixed"></i>
+        </button>
+        <button id="crosshair-header-btn" class="subheader-icon-btn" type="button" aria-label="Toggle center crosshair" title="Toggle center crosshair">
+          <i data-lucide="crosshair"></i>
+        </button>
+        <button id="wake-lock-btn" class="subheader-icon-btn" type="button" aria-label="Toggle screen wake lock" title="Prevent screen sleep">
+          <i data-lucide="moon-star"></i>
+        </button>
+        <button id="fullscreen-btn" class="subheader-icon-btn" type="button" aria-label="Toggle fullscreen mode" title="Toggle fullscreen">
+          <i data-lucide="maximize"></i>
+        </button>
+        <button id="utm-grid-btn" class="subheader-icon-btn" type="button" aria-label="Toggle UTM grid" title="Toggle UTM grid">
+          <i data-lucide="grid-3x3"></i>
+        </button>
+        <div id="gps-accuracy-badge" class="gps-accuracy-overlay gps-accuracy-na" title="Current GPS accuracy">
+          <span id="gps-accuracy-text">--</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map tools left sidebar (MapLibre-friendly: static HTML buttons) -->
+    <div id="map-toolbar" class="map-toolbar">
+      <!-- Select -->
+      <button id="draw-select-btn" class="map-tool-btn select-tool-btn" type="button" title="Select feature">
+        <i data-lucide="mouse-pointer-click"></i>
+      </button>
+      <!-- GPS single point -->
+      <button id="gps-single-btn" class="map-tool-btn point-tool-btn" type="button" title="Capture single GPS point">
+        <i data-lucide="map-pin"></i>
+      </button>
+      <!-- GPS point stream -->
+      <button id="gps-stream-btn" class="map-tool-btn point-tool-btn" type="button" title="Start/stop GPS point stream">
+        <i data-lucide="waypoints"></i>
+      </button>
+      <!-- Track -->
+      <button id="gps-track-btn" class="map-tool-btn line-tool-btn" type="button" title="Track logger">
+        <i data-lucide="route"></i>
+      </button>
+      <!-- Custom GPS line -->
+      <div class="point-tool-wrap">
+        <button id="gps-custom-line-btn" class="map-tool-btn line-tool-btn" type="button" title="Custom GPS line">
+          <i data-lucide="pen-line"></i>
+        </button>
+        <div id="custom-line-popover" class="line-attr-popover hidden">
+          <label>Type <input id="custom-line-type" type="text" /></label>
+          <label>Notes <textarea id="custom-line-notes" rows="3"></textarea></label>
+          <button type="button" id="custom-line-start">Start Custom Line</button>
+          <button type="button" id="custom-line-cancel">Cancel</button>
+        </div>
+      </div>
+      <!-- Sketch draw point -->
+      <button id="draw-point-btn" class="map-tool-btn point-tool-btn" type="button" title="Sketch point">
+        <i data-lucide="circle-dot"></i>
+      </button>
+      <!-- Sketch draw line -->
+      <button id="draw-line-btn" class="map-tool-btn line-tool-btn" type="button" title="Sketch line">
+        <i data-lucide="spline"></i>
+      </button>
+      <!-- Sketch draw polygon -->
+      <button id="draw-polygon-btn" class="map-tool-btn line-tool-btn" type="button" title="Sketch polygon">
+        <i data-lucide="pentagon"></i>
+      </button>
+    </div>
+
+    <!-- Type preset selector -->
+    <div id="type-preset-control" class="map-type-preset-wrap">
+      <select id="map-type-preset-select" class="map-type-preset-select" title="TYPE preset for new features">
+        <option value="__NONE__">None</option>
+      </select>
+    </div>
+
+    <div id="map">
+      <div id="map-crosshair" class="map-crosshair hidden" aria-hidden="true"></div>
+      <div id="grid-info" class="grid-info-map hidden">Grid: --</div>
+    </div>
+
+    <aside id="tools-panel" class="tools-panel hidden">
+      <button id="tools-close" class="tools-close-btn" type="button" aria-label="Close tools menu" title="Close">
+        <i data-lucide="x"></i>
+      </button>
+
+      <section>
+        <h3>Survey Metadata</h3>
+        <label>Surveyor Initials <input id="meta-surveyor-init" type="text" /></label>
+        <label>Project <input id="meta-project" type="text" /></label>
+        <label>Site <input id="meta-site" type="text" /></label>
+      </section>
+
+      <section id="gps-tools">
+        <h3>GPS Tools</h3>
+        <label>Min distance (m) <input id="gps-min-distance" type="number" min="0" step="0.5" value="3" /></label>
+        <label>Min interval (s) <input id="gps-min-interval" type="number" min="0" step="0.5" value="1" /></label>
+        <label>Max accuracy (m) <input id="gps-max-accuracy" type="number" min="1" step="1" value="25" /></label>
+        <label class="toggle-inline">Center on User Position <input id="gps-follow-user" type="checkbox" /></label>
+        <div id="gps-status">GPS inactive</div>
+      </section>
+
+      <section id="type-presets">
+        <h3>Presets</h3>
+        <label>Type Preset 1 <input id="type-preset-1" type="text" maxlength="64" /></label>
+        <label>Type Preset 2 <input id="type-preset-2" type="text" maxlength="64" /></label>
+        <label>Type Preset 3 <input id="type-preset-3" type="text" maxlength="64" /></label>
+        <label>Type Preset 4 <input id="type-preset-4" type="text" maxlength="64" /></label>
+        <label>Type Preset 5 <input id="type-preset-5" type="text" maxlength="64" /></label>
+      </section>
+
+      <section>
+        <h3>Basemap</h3>
+        <label>Active Basemap
+          <select id="basemap-select"></select>
+        </label>
+      </section>
+
+      <section>
+        <h3>Layers &amp; Styling</h3>
+        <div class="layer-header">
+          <span>Geometry</span>
+          <span>On/Off</span>
+          <span>Color</span>
+          <span>Size</span>
+          <span>Labels</span>
+        </div>
+        <div class="layer-row">
+          <span class="layer-geom">Point</span>
+          <input id="vis-point" type="checkbox" checked />
+          <input id="style-point-color" type="color" value="#e63946" />
+          <input id="style-point-size" type="number" min="3" max="20" value="7" />
+          <input id="label-point" type="checkbox" />
+        </div>
+        <div class="layer-row">
+          <span class="layer-geom">Line</span>
+          <input id="vis-line" type="checkbox" checked />
+          <input id="style-line-color" type="color" value="#1d3557" />
+          <input id="style-line-width" type="number" min="1" max="12" value="3" />
+          <input id="label-line" type="checkbox" />
+        </div>
+        <div class="layer-row">
+          <span class="layer-geom">Polygon</span>
+          <input id="vis-polygon" type="checkbox" checked />
+          <input id="style-polygon-color" type="color" value="#457b9d" />
+          <input id="style-polygon-width" type="number" min="1" max="12" value="2" />
+          <input id="label-polygon" type="checkbox" />
+        </div>
+      </section>
+
+      <section>
+        <h3>Export Data</h3>
+        <button id="download-geojson" type="button"><i data-lucide="download"></i><span>Download GeoJSON</span></button>
+      </section>
+
+      <section>
+        <h3>Import Data</h3>
+        <input id="import-file" type="file" accept=".geojson,.json,application/json" />
+        <div id="imported-overlays" class="imported-overlays"></div>
+      </section>
+
+      <section>
+        <h3>Offline Map Cache</h3>
+        <label>Additional deeper zoom levels
+          <input id="offline-cache-depth" type="number" min="0" max="8" step="1" value="3" />
+        </label>
+        <div id="offline-cache-estimate" class="offline-cache-estimate">Estimated cache size: --</div>
+        <button id="build-offline-cache" type="button"><i data-lucide="database"></i><span>Build Cache</span></button>
+        <div id="offline-cache-list" class="offline-cache-list"></div>
+      </section>
+
+      <section>
+        <h3>Purge Data</h3>
+        <button id="clear-features" type="button"><i data-lucide="trash-2"></i><span>Clear all features</span></button>
+      </section>
+    </aside>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
