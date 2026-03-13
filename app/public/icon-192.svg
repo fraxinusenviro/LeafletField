@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Field Mapper icon">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1f2d3a" />
+      <stop offset="100%" stop-color="#2f8f6a" />
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="40" fill="url(#bg)" />
+  <path d="M32 142l38-18 30 12 60-28V50L100 78 70 66 32 84z" fill="#ffffff" fill-opacity="0.2" />
+  <path d="M48 118l26-12 20 8 50-23" stroke="#ffffff" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="48" cy="118" r="10" fill="#ffffff" />
+  <text x="96" y="172" text-anchor="middle" font-size="22" font-family="Segoe UI, Arial, sans-serif" font-weight="700" fill="#ffffff">FM</text>
+</svg>

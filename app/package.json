@@ -1,0 +1,23 @@
+{
+  "name": "field-mapper",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lucide": "^0.475.0",
+    "maplibre-gl": "^4.7.1",
+    "@turf/length": "^7.1.0",
+    "@turf/area": "^7.1.0"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.14",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vite-plugin-pwa": "^0.21.1"
+  }
+}
